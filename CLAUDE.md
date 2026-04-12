@@ -7,6 +7,7 @@
 ```
 cryptodash/
 ├── .claude/
+│   ├── agents/            # Agent team definitions (PM, developer, tech lead, QA)
 │   └── skills/            # Claude Code skills (invoke with /skill-name)
 │       ├── develop-feature/       # /develop-feature — agent team: plan → TDD → review → QA
 │       ├── generate-func-spec/   # /generate-func-spec — functional spec from a brief
