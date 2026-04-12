@@ -5,6 +5,18 @@
 **Status:** Draft
 **Source:** `specs/FUNC_SPEC.md` v1.0
 
+### UI Mockups
+
+Interactive HTML mockups are in `specs/mockups/`. Open in a browser — no build step needed.
+
+| File | Screen | Key elements |
+|------|--------|-------------|
+| `01-login.html` | Login / First-run setup | Auth forms, password strength meter, error states |
+| `02-dashboard.html` | Main dashboard | All 8 widgets (W1–W8), Chart.js charts, wallet table, add-wallet modal |
+| `03-wallet-detail.html` | Per-wallet detail | Balance-over-time chart, transaction timeline, delete confirmation |
+
+These are the **visual source of truth** for the frontend implementation. Design tokens (colors, fonts, spacing) are defined as CSS custom properties in each file.
+
 ---
 
 ## 1. Technology Stack

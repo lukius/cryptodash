@@ -6,12 +6,16 @@
 
 ```
 cryptodash/
-├── specs/                 # Functional and technical specifications
+├── specs/                 # All design artifacts (specs + mockups)
+│   ├── FUNC_SPEC.md       # What the system does
+│   ├── TECH_SPEC.md       # How to build it
+│   ├── TECH_NOTES.md      # Research notes and decision points
+│   └── mockups/           # Interactive HTML mockups (visual source of truth for UI)
 ├── commands/              # Claude Code custom commands
 └── ...                    # To be defined — update this tree as code is added
 ```
 
-Read `specs/` for detailed functional and technical specs before implementing features.
+Read `specs/` for detailed functional and technical specs before implementing features. UI mockups in `specs/mockups/` are the visual source of truth — open them in a browser to see the target look-and-feel.
 
 ## Build & Run
 

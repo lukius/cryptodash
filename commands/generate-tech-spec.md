@@ -140,6 +140,42 @@ Present your questions grouped by spec section, with a brief note on why each ma
 
 ---
 
+## UI Mockups (Final Step)
+
+After the tech spec is written and reviewed, determine whether the project includes a **user-facing interface** (web UI, mobile app, CLI with rich output, etc.). If it does, create interactive HTML mockups before the implementation phase begins.
+
+### When to create mockups
+
+- The tech spec describes a frontend, dashboard, admin panel, or any visual interface.
+- Skip this step for purely backend/library/API-only projects with no UI component.
+
+### Process
+
+1. **Ask the user for visual references.** Prompt: *"Do you have any visual references — websites, screenshots, or design systems — you'd like the UI to resemble? If not, I'll design something from scratch based on the tech spec."* Collect URLs or descriptions if provided.
+2. **Research the references.** Fetch the provided URLs and analyze their design language: color palette, typography, layout patterns, card styles, spacing, dark/light mode, animations. Summarize the key design tokens you'll use.
+3. **If no references are provided**, design an original look-and-feel based on the project's domain and tech stack. Document the design rationale (why these colors, fonts, layout choices).
+4. **Create self-contained HTML mockups** — one file per key screen/view. Each file must:
+   - Be a single `.html` file that opens directly in a browser (no build step, no server).
+   - Embed all CSS inline (no external stylesheets).
+   - Use CDN-loaded libraries where needed (e.g., Chart.js for data visualizations).
+   - Include realistic sample data (not "Lorem ipsum" — use domain-appropriate values).
+   - Be interactive enough to convey the UX: hover states, modals, toggles, navigation between screens.
+   - Be responsive (test at both desktop and mobile widths).
+5. **Save mockups to `specs/mockups/`** with numbered filenames for natural ordering (e.g., `01-login.html`, `02-dashboard.html`, `03-detail.html`). This directory sits alongside the functional and technical specs so that all design artifacts are in one place. Implementation code in `frontend/` (or equivalent) should reference these mockups as the visual source of truth.
+6. **Open the mockups in the browser** and ask the user for feedback. Iterate until the user is satisfied with the look and feel.
+7. **Add a section to the tech spec** (or a note at the top) listing the mockup files and what each one covers, so implementers know where to find the visual references.
+
+### Mockup design guidelines
+
+- **Domain-appropriate aesthetics.** A fintech dashboard should look different from a developer tool. Match the visual tone to the product's audience.
+- **Consistent design tokens.** Define CSS custom properties for colors, spacing, radii, and typography at the top of each file. Reuse them across all mockups.
+- **Real logos and icons.** Search for actual SVG assets (crypto logos, brand marks, etc.) rather than using placeholder symbols.
+- **Fonts from CDN.** Use Google Fonts or similar for the actual typefaces specified in the tech spec.
+- **Interactive charts.** If the UI includes data visualizations, use a charting library (Chart.js, etc.) with sample data rather than static images.
+- **Show edge cases.** Include empty states, loading states, error banners, and modals — not just the happy path.
+
+---
+
 ## Guidelines
 
 - **Be concrete, not abstract.** "Use a mutex" is vague. "Wrap the `tokenStore map[string]tokenEntry` with a `sync.RWMutex`; acquire a read lock in `Validate()` and a write lock in `Store()` and `Cleanup()`" is concrete.

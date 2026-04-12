@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoDash — Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060b14;
+    --bg-subtle: #0c1220;
+    --card: rgba(255, 255, 255, 0.03);
+    --card-hover: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-focus: rgba(73, 234, 203, 0.4);
+    --text: rgba(255, 255, 255, 0.87);
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --text-muted: rgba(255, 255, 255, 0.4);
+    --accent: #49eacb;
+    --accent-dim: rgba(73, 234, 203, 0.15);
+    --accent-glow: rgba(73, 234, 203, 0.4);
+    --green: #00e676;
+    --red: #ff4444;
+    --orange: #F7931A;
+    --input-bg: rgba(255, 255, 255, 0.04);
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  /* === Animated background === */
+  .bg-effects {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .bg-effects .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.35;
+    animation: orbFloat 20s ease-in-out infinite alternate;
+  }
+  .bg-effects .orb-1 {
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(73, 234, 203, 0.18), transparent 70%);
+    top: -200px; right: -100px;
+  }
+  .bg-effects .orb-2 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(73, 100, 234, 0.12), transparent 70%);
+    bottom: -200px; left: -100px;
+    animation-delay: -10s;
+  }
+  .bg-effects .orb-3 {
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(247, 147, 26, 0.08), transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    animation-delay: -5s;
+  }
+  @keyframes orbFloat {
+    0% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(30px, -20px) scale(1.05); }
+    66% { transform: translate(-20px, 30px) scale(0.95); }
+    100% { transform: translate(10px, -10px) scale(1.02); }
+  }
+
+  /* Grid noise overlay */
+  .bg-effects::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 30px 30px;
+    pointer-events: none;
+  }
+
+  /* === Layout === */
+  .page {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  /* === Logo === */
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 2.5rem;
+    animation: fadeInDown 0.8s ease-out;
+  }
+  .logo-icon {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--accent), #3b82f6);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 800;
+    color: var(--bg);
+    box-shadow: 0 0 40px var(--accent-glow), 0 0 80px rgba(73, 234, 203, 0.15);
+  }
+  .logo-text {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #fff;
+  }
+  .logo-text .cr { color: var(--orange); }
+  .logo-text .da { color: var(--accent); }
+
+  /* === Card === */
+  .auth-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2.5rem;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    animation: fadeInUp 0.6s ease-out;
+  }
+  .auth-card h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.35rem;
+  }
+  .auth-card .subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+    line-height: 1.5;
+  }
+
+  /* === Form === */
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+  .form-group label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .form-group input::placeholder {
+    color: var(--text-muted);
+  }
+  .form-group input:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(73, 234, 203, 0.08);
+  }
+  .form-group .error-msg {
+    display: none;
+    font-size: 0.78rem;
+    color: var(--red);
+    margin-top: 0.4rem;
+  }
+  .form-group.error input {
+    border-color: rgba(255, 68, 68, 0.5);
+  }
+  .form-group.error .error-msg {
+    display: block;
+  }
+
+  /* Remember me */
+  .form-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.75rem;
+  }
+  .checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
+  .checkbox-wrapper input[type="checkbox"] {
+    appearance: none;
+    width: 18px; height: 18px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--input-bg);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s;
+  }
+  .checkbox-wrapper input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .checkbox-wrapper input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--bg);
+  }
+
+  /* Button */
+  .btn-primary {
+    width: 100%;
+    padding: 0.85rem;
+    background: linear-gradient(135deg, var(--accent), #3bc4a8);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--bg);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 30px rgba(73, 234, 203, 0.3), 0 0 60px rgba(73, 234, 203, 0.1);
+  }
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  /* Error banner */
+  .error-banner {
+    display: none;
+    background: rgba(255, 68, 68, 0.08);
+    border: 1px solid rgba(255, 68, 68, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.85rem;
+    color: #ff6b6b;
+  }
+  .error-banner.visible { display: block; }
+
+  /* Rate limit banner */
+  .rate-limit-banner {
+    display: none;
+    background: rgba(247, 147, 26, 0.08);
+    border: 1px solid rgba(247, 147, 26, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.85rem;
+    color: var(--orange);
+  }
+
+  /* === Tabs (login vs setup) === */
+  .tab-switcher {
+    display: flex;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 2rem;
+  }
+  .tab-switcher button {
+    flex: 1;
+    padding: 0.6rem;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .tab-switcher button.active {
+    background: rgba(73, 234, 203, 0.1);
+    color: var(--accent);
+  }
+  .tab-switcher button:hover:not(.active) {
+    color: var(--text);
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* === Footer === */
+  .auth-footer {
+    margin-top: 2rem;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    animation: fadeInUp 0.6s ease-out 0.2s both;
+  }
+  .auth-footer a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  /* Animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* === Password strength indicator === */
+  .pw-strength {
+    display: flex;
+    gap: 4px;
+    margin-top: 0.5rem;
+  }
+  .pw-strength .bar {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.06);
+    transition: background 0.3s;
+  }
+  .pw-strength .bar.weak { background: var(--red); }
+  .pw-strength .bar.medium { background: var(--orange); }
+  .pw-strength .bar.strong { background: var(--green); }
+
+  .pw-strength-label {
+    font-size: 0.72rem;
+    margin-top: 0.35rem;
+    transition: color 0.3s;
+  }
+
+  /* Mobile */
+  @media (max-width: 480px) {
+    .auth-card { padding: 1.75rem; }
+    .logo-text { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-effects">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<div class="page">
+  <div class="logo">
+    <div class="logo-icon">C</div>
+    <div class="logo-text"><span class="cr">Crypto</span><span class="da">Dash</span></div>
+  </div>
+
+  <div class="auth-card">
+    <!-- Tab switcher (for mockup navigation) -->
+    <div class="tab-switcher">
+      <button class="active" onclick="switchTab('login')">Sign In</button>
+      <button onclick="switchTab('setup')">First-Run Setup</button>
+    </div>
+
+    <!-- ====== LOGIN TAB ====== -->
+    <div class="tab-content active" id="tab-login">
+      <h2>Welcome back</h2>
+      <p class="subtitle">Enter your credentials to access your dashboard.</p>
+
+      <div class="error-banner" id="login-error">
+        Invalid username or password.
+      </div>
+      <div class="rate-limit-banner" id="login-rate-limit">
+        Too many failed attempts. Please wait <strong>27 seconds</strong> before trying again.
+      </div>
+
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" placeholder="Enter your username" value="satoshi">
+      </div>
+
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" placeholder="Enter your password">
+      </div>
+
+      <div class="form-options">
+        <label class="checkbox-wrapper">
+          <input type="checkbox">
+          <span>Remember me for 30 days</span>
+        </label>
+      </div>
+
+      <button class="btn-primary" onclick="demoLoginError()">Sign In</button>
+    </div>
+
+    <!-- ====== SETUP TAB ====== -->
+    <div class="tab-content" id="tab-setup">
+      <h2>Create your account</h2>
+      <p class="subtitle">Set up CryptoDash for the first time. This is the only account — choose a strong password.</p>
+
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" placeholder="Choose a username">
+      </div>
+
+      <div class="form-group" id="setup-pw-group">
+        <label>Password</label>
+        <input type="password" placeholder="At least 8 characters" oninput="updateStrength(this.value)">
+        <div class="pw-strength">
+          <div class="bar" id="str-1"></div>
+          <div class="bar" id="str-2"></div>
+          <div class="bar" id="str-3"></div>
+          <div class="bar" id="str-4"></div>
+        </div>
+        <div class="pw-strength-label" id="str-label" style="color: var(--text-muted)">Password strength</div>
+      </div>
+
+      <div class="form-group" id="setup-pw-confirm">
+        <label>Confirm Password</label>
+        <input type="password" placeholder="Re-enter your password">
+        <div class="error-msg">Passwords do not match.</div>
+      </div>
+
+      <button class="btn-primary" onclick="demoSetupError()" style="margin-top: 0.5rem;">Create Account</button>
+    </div>
+  </div>
+
+  <div class="auth-footer">
+    Self-hosted crypto portfolio tracker &middot; No private keys, no third parties
+  </div>
+</div>
+
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-switcher button').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function demoLoginError() {
+  const banner = document.getElementById('login-error');
+  banner.classList.add('visible');
+  setTimeout(() => banner.classList.remove('visible'), 3000);
+}
+
+function demoSetupError() {
+  const group = document.getElementById('setup-pw-confirm');
+  group.classList.add('error');
+  setTimeout(() => group.classList.remove('error'), 3000);
+}
+
+function updateStrength(pw) {
+  const bars = [document.getElementById('str-1'), document.getElementById('str-2'),
+                document.getElementById('str-3'), document.getElementById('str-4')];
+  const label = document.getElementById('str-label');
+  bars.forEach(b => b.className = 'bar');
+
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw) || /[^a-zA-Z0-9]/.test(pw)) score++;
+
+  const levels = [
+    { cls: '', text: 'Password strength', color: 'var(--text-muted)' },
+    { cls: 'weak', text: 'Weak', color: 'var(--red)' },
+    { cls: 'medium', text: 'Fair', color: 'var(--orange)' },
+    { cls: 'strong', text: 'Good', color: 'var(--green)' },
+    { cls: 'strong', text: 'Strong', color: 'var(--green)' },
+  ];
+
+  for (let i = 0; i < score; i++) bars[i].classList.add(levels[score].cls);
+  label.textContent = levels[score].text;
+  label.style.color = levels[score].color;
+}
+</script>
+</body>
+</html>

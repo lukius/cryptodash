@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoDash — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --bg: #060b14;
+    --bg-card: rgba(255, 255, 255, 0.025);
+    --bg-card-hover: rgba(255, 255, 255, 0.045);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-accent: rgba(73, 234, 203, 0.2);
+    --text: rgba(255, 255, 255, 0.87);
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --text-muted: rgba(255, 255, 255, 0.38);
+    --accent: #49eacb;
+    --accent-dim: rgba(73, 234, 203, 0.1);
+    --accent-glow: rgba(73, 234, 203, 0.35);
+    --green: #00e676;
+    --green-dim: rgba(0, 230, 118, 0.1);
+    --red: #ff4444;
+    --red-dim: rgba(255, 68, 68, 0.1);
+    --orange: #F7931A;
+    --btc-color: #f7931a;
+    --kas-color: #49eacb;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --header-h: 64px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ========== HEADER ========== */
+  .header {
+    position: sticky; top: 0; z-index: 100;
+    height: var(--header-h);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1.5rem;
+    background: linear-gradient(90deg, rgba(6,11,20,0.95), rgba(10,18,35,0.95) 40%, rgba(20,35,55,0.9));
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), #3b82f6);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; color: var(--bg);
+    box-shadow: 0 0 24px var(--accent-glow);
+  }
+  .logo-text { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.03em; color: #fff; }
+  .logo-text .cr { color: var(--btc-color); }
+  .logo-text .da { color: var(--kas-color); }
+
+  .crypto-icon { display: inline-block; vertical-align: middle; flex-shrink: 0; }
+
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  .header-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0.5rem 0.85rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: inherit; font-size: 0.8rem; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .header-btn:hover { border-color: rgba(255,255,255,0.15); color: var(--text); background: rgba(255,255,255,0.03); }
+  .header-btn.accent { border-color: var(--border-accent); color: var(--accent); }
+  .header-btn.accent:hover { background: var(--accent-dim); box-shadow: 0 0 20px rgba(73,234,203,0.08); }
+  .header-btn svg { width: 16px; height: 16px; }
+  .header-btn.refreshing svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .last-updated {
+    font-size: 0.72rem; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-right: 0.5rem;
+  }
+
+  /* ========== MAIN LAYOUT ========== */
+  .main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  /* ========== GRID ========== */
+  .summary-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .charts-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .price-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  /* ========== CARD ========== */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .card:hover {
+    border-color: rgba(255,255,255,0.1);
+    background: var(--bg-card-hover);
+  }
+  .card-label {
+    font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .card-label .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+
+  /* ========== W1: PORTFOLIO VALUE ========== */
+  .portfolio-value {
+    border-color: var(--border-accent);
+  }
+  .portfolio-value .value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #fff;
+    text-shadow: 0 0 60px rgba(73, 234, 203, 0.15);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .portfolio-value .change {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 0.5rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 8px;
+    font-size: 0.82rem; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .change.positive { background: var(--green-dim); color: var(--green); }
+  .change.negative { background: var(--red-dim); color: var(--red); }
+  .change .arrow { font-size: 0.9em; }
+
+  /* ========== W2/W3: COIN TOTALS ========== */
+  .coin-total .value {
+    font-size: 1.5rem; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .coin-total .sub-value {
+    font-size: 0.85rem; color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 0.25rem;
+  }
+  .coin-total .price-line {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.78rem; color: var(--text-muted);
+  }
+  .coin-total .price-line .price {
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ========== CHART CARD ========== */
+  .chart-card { padding: 1.25rem; }
+  .chart-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .chart-title {
+    font-size: 0.85rem; font-weight: 600; color: var(--text);
+  }
+
+  /* Time range selector */
+  .time-range {
+    display: flex; gap: 2px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px; padding: 3px;
+  }
+  .time-range button {
+    padding: 0.3rem 0.6rem;
+    border: none; border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .time-range button:hover { color: var(--text-secondary); }
+  .time-range button.active { background: var(--accent-dim); color: var(--accent); }
+
+  .chart-canvas-wrap {
+    position: relative;
+    height: 240px;
+  }
+  .chart-canvas-wrap canvas { width: 100% !important; height: 100% !important; }
+
+  /* ========== W5: PIE CHART ========== */
+  .pie-card .chart-canvas-wrap { height: 240px; display: flex; align-items: center; justify-content: center; }
+  .pie-legend {
+    display: flex; flex-direction: column; gap: 0.75rem;
+    margin-top: 1rem;
+  }
+  .pie-legend-item {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .pie-legend-item .left { display: flex; align-items: center; gap: 8px; }
+  .pie-legend-item .swatch {
+    width: 12px; height: 12px; border-radius: 4px;
+  }
+  .pie-legend-item .name { font-size: 0.85rem; font-weight: 500; }
+  .pie-legend-item .right {
+    text-align: right;
+  }
+  .pie-legend-item .pct {
+    font-size: 0.85rem; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .pie-legend-item .usd {
+    font-size: 0.72rem; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ========== W4: WALLET TABLE ========== */
+  .wallet-table-card { padding: 0; overflow: hidden; }
+  .wallet-table-card .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .wallet-table-card .card-header h3 {
+    font-size: 0.95rem; font-weight: 600;
+  }
+  .btn-add-wallet {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0.45rem 0.85rem;
+    background: var(--accent-dim);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    font-family: inherit; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-add-wallet:hover {
+    background: rgba(73, 234, 203, 0.18);
+    box-shadow: 0 0 20px rgba(73, 234, 203, 0.1);
+  }
+  .wallet-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .wallet-table thead th {
+    padding: 0.75rem 1.5rem;
+    text-align: left;
+    font-size: 0.7rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .wallet-table thead th:hover { color: var(--text-secondary); }
+  .wallet-table thead th .sort-arrow { opacity: 0.4; margin-left: 4px; font-size: 0.65rem; }
+  .wallet-table tbody tr {
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+  .wallet-table tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+  .wallet-table tbody td {
+    padding: 0.85rem 1.5rem;
+    font-size: 0.88rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    white-space: nowrap;
+  }
+  .wallet-table .tag-cell {
+    font-weight: 600;
+    color: #fff;
+  }
+  .wallet-table .network-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.72rem; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .network-badge.btc { background: rgba(247,147,26,0.1); color: var(--btc-color); }
+  .network-badge.kas { background: rgba(73,234,203,0.08); color: var(--kas-color); }
+  .network-badge svg { width: 14px; height: 14px; }
+  .wallet-table .address {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+  }
+  .wallet-table .balance {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+    text-align: right;
+  }
+  .wallet-table .usd-val {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+    text-align: right;
+  }
+  .wallet-table .actions {
+    text-align: right;
+  }
+  .wallet-table .action-btn {
+    background: none; border: none;
+    color: var(--text-muted);
+    cursor: pointer; padding: 4px;
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .wallet-table .action-btn:hover { color: var(--red); background: var(--red-dim); }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width: 1024px) {
+    .summary-row { grid-template-columns: 1fr; }
+    .charts-row { grid-template-columns: 1fr; }
+    .price-row { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 768px) {
+    .header { padding: 0 1rem; }
+    .main { padding: 1rem; }
+    .portfolio-value .value { font-size: 1.8rem; }
+    .last-updated { display: none; }
+    .wallet-table-card { overflow-x: auto; }
+  }
+  @media (max-width: 480px) {
+    .summary-row { gap: 0.75rem; }
+    .header-btn span { display: none; }
+  }
+
+  /* ========== ADD WALLET MODAL ========== */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    width: 100%; max-width: 460px;
+    background: #0c1220;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    animation: fadeInUp 0.3s ease-out;
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .modal h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.35rem; }
+  .modal .subtitle { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 1.5rem; }
+  .modal .form-group { margin-bottom: 1rem; }
+  .modal label {
+    display: block; font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-secondary); margin-bottom: 0.45rem;
+  }
+  .modal input, .modal select {
+    width: 100%; padding: 0.7rem 0.9rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-family: inherit; font-size: 0.9rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .modal input:focus, .modal select:focus {
+    border-color: rgba(73,234,203,0.4);
+  }
+  .modal select { appearance: none; cursor: pointer; }
+  .modal select option { background: #0c1220; }
+  .modal .hint { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.3rem; }
+  .modal .btn-row { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+  .modal .btn-cancel {
+    flex: 1; padding: 0.7rem;
+    background: transparent; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    font-family: inherit; font-size: 0.88rem; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .modal .btn-cancel:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
+  .modal .btn-submit {
+    flex: 1; padding: 0.7rem;
+    background: linear-gradient(135deg, var(--accent), #3bc4a8);
+    border: none; border-radius: var(--radius-sm);
+    color: var(--bg); font-family: inherit; font-size: 0.88rem; font-weight: 700;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .modal .btn-submit:hover { box-shadow: 0 6px 24px rgba(73,234,203,0.3); }
+
+  /* Network selector pills */
+  .network-select {
+    display: flex; gap: 0.5rem;
+  }
+  .network-select .pill {
+    flex: 1; padding: 0.7rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-secondary); font-family: inherit; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; text-align: center;
+  }
+  .network-select .pill:hover { border-color: rgba(255,255,255,0.12); }
+  .network-select .pill.active-btc { border-color: rgba(247,147,26,0.5); color: var(--btc-color); background: rgba(247,147,26,0.06); }
+  .network-select .pill.active-kas { border-color: rgba(73,234,203,0.5); color: var(--kas-color); background: rgba(73,234,203,0.06); }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo-icon">C</div>
+    <div class="logo-text"><span class="cr">Crypto</span><span class="da">Dash</span></div>
+  </div>
+  <div class="header-right">
+    <span class="last-updated">Updated 14:32:05 UTC</span>
+    <button class="header-btn accent" id="refresh-btn" onclick="simulateRefresh()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      <span>Refresh</span>
+    </button>
+    <button class="header-btn" onclick="document.getElementById('add-wallet-modal').classList.add('open')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span>Add Wallet</span>
+    </button>
+    <button class="header-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <button class="header-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ========== MAIN CONTENT ========== -->
+<main class="main">
+
+  <!-- Row 1: Summary cards -->
+  <div class="summary-row">
+    <!-- W1: Total Portfolio Value -->
+    <div class="card portfolio-value">
+      <div class="card-label">
+        <div class="dot" style="background: var(--accent);"></div>
+        Total Portfolio Value
+      </div>
+      <div class="value">$145,263.80</div>
+      <span class="change positive">
+        <span class="arrow">&#9650;</span>
+        +$4,488.12 (3.19%)
+        <span style="font-weight:400; opacity:0.6; margin-left:4px;">24h</span>
+      </span>
+    </div>
+
+    <!-- W2: Total BTC -->
+    <div class="card coin-total">
+      <div class="card-label">
+        <svg class="crypto-icon" width="18" height="18" viewBox="0 0 4091.27 4091.73"><path fill="#F7931A" d="M4030.06 2540.77c-273.24,1096.01 -1383.32,1763.02 -2479.46,1489.71 -1095.68,-273.24 -1762.69,-1383.39 -1489.33,-2479.31 273.12,-1096.13 1383.2,-1763.19 2479,-1489.95 1096.06,273.24 1763.03,1383.51 1489.76,2479.57z"/><path fill="#FFF" d="M2947.77 1754.38c40.72,-272.26 -166.56,-418.61 -450,-516.24l91.95 -368.8 -224.5 -55.94 -89.51 359.09c-59.02,-14.72 -119.63,-28.59 -179.87,-42.34l90.16 -361.46 -224.36 -55.94 -92 368.68c-48.84,-11.12 -96.81,-22.11 -143.35,-33.69l0.26 -1.16 -309.59 -77.31 -59.72 239.78c0,0 166.56,38.18 163.05,40.53 90.91,22.69 107.35,82.87 104.62,130.57l-104.74 420.15c6.26,1.59 14.38,3.89 23.34,7.49 -7.49,-1.86 -15.46,-3.89 -23.73,-5.87l-146.81 588.57c-11.11,27.62 -39.31,69.07 -102.87,53.33 2.25,3.26 -163.17,-40.72 -163.17,-40.72l-111.46 256.98 292.15 72.83c54.35,13.63 107.61,27.89 160.06,41.3l-92.9 373.03 224.24 55.94 92 -369.07c61.26,16.63 120.71,31.97 178.91,46.43l-91.69 367.33 224.51 55.94 92.89 -372.33c382.82,72.45 670.67,43.24 791.83,-303.02 97.63,-278.78 -4.86,-439.58 -206.26,-544.44 146.69,-33.83 257.18,-130.31 286.64,-329.61zm-512.93 719.26c-69.38,278.78 -538.76,128.08 -690.94,90.29l123.28 -494.2c152.17,37.99 640.17,113.17 567.67,403.91zm69.43 -723.3c-63.29,253.58 -453.96,124.75 -580.69,93.16l111.77 -448.21c126.73,31.59 534.85,90.55 468.94,355.05z"/></svg>
+        Bitcoin
+      </div>
+      <div class="value">1.85000000</div>
+      <div class="sub-value">$132,460.00</div>
+      <div class="price-line">
+        <span>BTC/USD</span>
+        <span class="price">$71,600.00</span>
+      </div>
+    </div>
+
+    <!-- W3: Total KAS -->
+    <div class="card coin-total">
+      <div class="card-label">
+        <svg class="crypto-icon" width="18" height="18" viewBox="58 28 78 78"><path fill="#49EACB" d="M134.43,66.58c0,5.11-2.11,10.05-3.96,14.5-1.85,4.45-4.71,8.85-8.18,12.32-3.47,3.47-7.64,6.46-12.24,8.37-4.44,1.84-9.46,3.36-14.57,3.36-5.11,0-10.24-1.26-14.68-3.1-4.61-1.91-7.76-6.06-11.23-9.54-3.47-3.47-7.36-6.73-9.27-11.34-1.91-4.61-2.22-9.46-2.22-14.57 0-5.11-0.6-10.53 1.24-14.98 1.91-4.61 5.94-8.29 9.42-11.76 3.47-3.47 7.32-7.1 11.93-9.01 4.44-1.84 9.7-2.03 14.81-2.03 5.11,0 10.06,0.93 14.5,2.77 4.61,1.91 9.05,4.51 12.52,7.99 3.47,3.47 6.48,7.75 8.39,12.35 1.84,4.44 3.54,9.56 3.54,14.67z"/><polygon fill="#FFF" points="98.08,87.16 106.18,88.36 109.4,66.58 106.18,44.79 98.08,45.99 100.39,61.66 83.44,48.61 78.45,55.12 93.32,66.58 78.45,78.03 83.44,84.55 100.39,71.49"/></svg>
+        Kaspa
+      </div>
+      <div class="value">393,964.62</div>
+      <div class="sub-value">$12,803.80</div>
+      <div class="price-line">
+        <span>KAS/USD</span>
+        <span class="price">$0.03250</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Portfolio chart + Composition pie -->
+  <div class="charts-row">
+    <!-- W6: Portfolio Value Over Time -->
+    <div class="card chart-card">
+      <div class="chart-header">
+        <span class="chart-title">Portfolio Value</span>
+        <div class="time-range" id="portfolio-range">
+          <button onclick="setRange(this)">7D</button>
+          <button class="active" onclick="setRange(this)">30D</button>
+          <button onclick="setRange(this)">90D</button>
+          <button onclick="setRange(this)">1Y</button>
+          <button onclick="setRange(this)">ALL</button>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="portfolioChart"></canvas>
+      </div>
+    </div>
+
+    <!-- W5: Portfolio Composition -->
+    <div class="card chart-card pie-card">
+      <div class="chart-header">
+        <span class="chart-title">Composition</span>
+      </div>
+      <div class="chart-canvas-wrap" style="height: 180px;">
+        <canvas id="compositionChart"></canvas>
+      </div>
+      <div class="pie-legend">
+        <div class="pie-legend-item">
+          <div class="left">
+            <svg class="crypto-icon" width="16" height="16" viewBox="0 0 4091.27 4091.73"><path fill="#F7931A" d="M4030.06 2540.77c-273.24,1096.01 -1383.32,1763.02 -2479.46,1489.71 -1095.68,-273.24 -1762.69,-1383.39 -1489.33,-2479.31 273.12,-1096.13 1383.2,-1763.19 2479,-1489.95 1096.06,273.24 1763.03,1383.51 1489.76,2479.57z"/><path fill="#FFF" d="M2947.77 1754.38c40.72,-272.26 -166.56,-418.61 -450,-516.24l91.95 -368.8 -224.5 -55.94 -89.51 359.09c-59.02,-14.72 -119.63,-28.59 -179.87,-42.34l90.16 -361.46 -224.36 -55.94 -92 368.68c-48.84,-11.12 -96.81,-22.11 -143.35,-33.69l0.26 -1.16 -309.59 -77.31 -59.72 239.78c0,0 166.56,38.18 163.05,40.53 90.91,22.69 107.35,82.87 104.62,130.57l-104.74 420.15c6.26,1.59 14.38,3.89 23.34,7.49 -7.49,-1.86 -15.46,-3.89 -23.73,-5.87l-146.81 588.57c-11.11,27.62 -39.31,69.07 -102.87,53.33 2.25,3.26 -163.17,-40.72 -163.17,-40.72l-111.46 256.98 292.15 72.83c54.35,13.63 107.61,27.89 160.06,41.3l-92.9 373.03 224.24 55.94 92 -369.07c61.26,16.63 120.71,31.97 178.91,46.43l-91.69 367.33 224.51 55.94 92.89 -372.33c382.82,72.45 670.67,43.24 791.83,-303.02 97.63,-278.78 -4.86,-439.58 -206.26,-544.44 146.69,-33.83 257.18,-130.31 286.64,-329.61zm-512.93 719.26c-69.38,278.78 -538.76,128.08 -690.94,90.29l123.28 -494.2c152.17,37.99 640.17,113.17 567.67,403.91zm69.43 -723.3c-63.29,253.58 -453.96,124.75 -580.69,93.16l111.77 -448.21c126.73,31.59 534.85,90.55 468.94,355.05z"/></svg>
+            <span class="name">Bitcoin</span>
+          </div>
+          <div class="right">
+            <div class="pct">91.2%</div>
+            <div class="usd">$132,460</div>
+          </div>
+        </div>
+        <div class="pie-legend-item">
+          <div class="left">
+            <svg class="crypto-icon" width="16" height="16" viewBox="58 28 78 78"><path fill="#49EACB" d="M134.43,66.58c0,5.11-2.11,10.05-3.96,14.5-1.85,4.45-4.71,8.85-8.18,12.32-3.47,3.47-7.64,6.46-12.24,8.37-4.44,1.84-9.46,3.36-14.57,3.36-5.11,0-10.24-1.26-14.68-3.1-4.61-1.91-7.76-6.06-11.23-9.54-3.47-3.47-7.36-6.73-9.27-11.34-1.91-4.61-2.22-9.46-2.22-14.57 0-5.11-0.6-10.53 1.24-14.98 1.91-4.61 5.94-8.29 9.42-11.76 3.47-3.47 7.32-7.1 11.93-9.01 4.44-1.84 9.7-2.03 14.81-2.03 5.11,0 10.06,0.93 14.5,2.77 4.61,1.91 9.05,4.51 12.52,7.99 3.47,3.47 6.48,7.75 8.39,12.35 1.84,4.44 3.54,9.56 3.54,14.67z"/><polygon fill="#FFF" points="98.08,87.16 106.18,88.36 109.4,66.58 106.18,44.79 98.08,45.99 100.39,61.66 83.44,48.61 78.45,55.12 93.32,66.58 78.45,78.03 83.44,84.55 100.39,71.49"/></svg>
+            <span class="name">Kaspa</span>
+          </div>
+          <div class="right">
+            <div class="pct">8.8%</div>
+            <div class="usd">$12,804</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Price charts -->
+  <div class="price-row">
+    <!-- W8a: BTC Price -->
+    <div class="card chart-card">
+      <div class="chart-header">
+        <span class="chart-title">BTC / USD</span>
+        <div class="time-range">
+          <button>7D</button>
+          <button class="active">30D</button>
+          <button>90D</button>
+          <button>1Y</button>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap" style="height: 180px;">
+        <canvas id="btcPriceChart"></canvas>
+      </div>
+    </div>
+
+    <!-- W8b: KAS Price -->
+    <div class="card chart-card">
+      <div class="chart-header">
+        <span class="chart-title">KAS / USD</span>
+        <div class="time-range">
+          <button>7D</button>
+          <button class="active">30D</button>
+          <button>90D</button>
+          <button>1Y</button>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap" style="height: 180px;">
+        <canvas id="kasPriceChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: Wallet Table -->
+  <div class="card wallet-table-card">
+    <div class="card-header">
+      <h3>Wallets</h3>
+      <button class="btn-add-wallet" onclick="document.getElementById('add-wallet-modal').classList.add('open')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Wallet
+      </button>
+    </div>
+    <table class="wallet-table">
+      <thead>
+        <tr>
+          <th>Tag <span class="sort-arrow">&#9660;</span></th>
+          <th>Network</th>
+          <th>Address</th>
+          <th style="text-align:right">Balance</th>
+          <th style="text-align:right">Value (USD)</th>
+          <th style="text-align:right"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr onclick="window.location='03-wallet-detail.html'">
+          <td class="tag-cell">Cold Storage</td>
+          <td><span class="network-badge btc"><svg width="14" height="14" viewBox="0 0 4091.27 4091.73"><path fill="#F7931A" d="M4030.06 2540.77c-273.24,1096.01 -1383.32,1763.02 -2479.46,1489.71 -1095.68,-273.24 -1762.69,-1383.39 -1489.33,-2479.31 273.12,-1096.13 1383.2,-1763.19 2479,-1489.95 1096.06,273.24 1763.03,1383.51 1489.76,2479.57z"/><path fill="#FFF" d="M2947.77 1754.38c40.72,-272.26 -166.56,-418.61 -450,-516.24l91.95 -368.8 -224.5 -55.94 -89.51 359.09c-59.02,-14.72 -119.63,-28.59 -179.87,-42.34l90.16 -361.46 -224.36 -55.94 -92 368.68c-48.84,-11.12 -96.81,-22.11 -143.35,-33.69l0.26 -1.16 -309.59 -77.31 -59.72 239.78c0,0 166.56,38.18 163.05,40.53 90.91,22.69 107.35,82.87 104.62,130.57l-104.74 420.15c6.26,1.59 14.38,3.89 23.34,7.49 -7.49,-1.86 -15.46,-3.89 -23.73,-5.87l-146.81 588.57c-11.11,27.62 -39.31,69.07 -102.87,53.33 2.25,3.26 -163.17,-40.72 -163.17,-40.72l-111.46 256.98 292.15 72.83c54.35,13.63 107.61,27.89 160.06,41.3l-92.9 373.03 224.24 55.94 92 -369.07c61.26,16.63 120.71,31.97 178.91,46.43l-91.69 367.33 224.51 55.94 92.89 -372.33c382.82,72.45 670.67,43.24 791.83,-303.02 97.63,-278.78 -4.86,-439.58 -206.26,-544.44 146.69,-33.83 257.18,-130.31 286.64,-329.61zm-512.93 719.26c-69.38,278.78 -538.76,128.08 -690.94,90.29l123.28 -494.2c152.17,37.99 640.17,113.17 567.67,403.91zm69.43 -723.3c-63.29,253.58 -453.96,124.75 -580.69,93.16l111.77 -448.21c126.73,31.59 534.85,90.55 468.94,355.05z"/></svg> BTC</span></td>
+          <td class="address">bc1q9h5yjq...k4m7wv2e</td>
+          <td class="balance">1.50000000 BTC</td>
+          <td class="usd-val">$107,400.00</td>
+          <td class="actions"><button class="action-btn" onclick="event.stopPropagation()">&#10005;</button></td>
+        </tr>
+        <tr>
+          <td class="tag-cell">Trading Fund</td>
+          <td><span class="network-badge btc"><svg width="14" height="14" viewBox="0 0 4091.27 4091.73"><path fill="#F7931A" d="M4030.06 2540.77c-273.24,1096.01 -1383.32,1763.02 -2479.46,1489.71 -1095.68,-273.24 -1762.69,-1383.39 -1489.33,-2479.31 273.12,-1096.13 1383.2,-1763.19 2479,-1489.95 1096.06,273.24 1763.03,1383.51 1489.76,2479.57z"/><path fill="#FFF" d="M2947.77 1754.38c40.72,-272.26 -166.56,-418.61 -450,-516.24l91.95 -368.8 -224.5 -55.94 -89.51 359.09c-59.02,-14.72 -119.63,-28.59 -179.87,-42.34l90.16 -361.46 -224.36 -55.94 -92 368.68c-48.84,-11.12 -96.81,-22.11 -143.35,-33.69l0.26 -1.16 -309.59 -77.31 -59.72 239.78c0,0 166.56,38.18 163.05,40.53 90.91,22.69 107.35,82.87 104.62,130.57l-104.74 420.15c6.26,1.59 14.38,3.89 23.34,7.49 -7.49,-1.86 -15.46,-3.89 -23.73,-5.87l-146.81 588.57c-11.11,27.62 -39.31,69.07 -102.87,53.33 2.25,3.26 -163.17,-40.72 -163.17,-40.72l-111.46 256.98 292.15 72.83c54.35,13.63 107.61,27.89 160.06,41.3l-92.9 373.03 224.24 55.94 92 -369.07c61.26,16.63 120.71,31.97 178.91,46.43l-91.69 367.33 224.51 55.94 92.89 -372.33c382.82,72.45 670.67,43.24 791.83,-303.02 97.63,-278.78 -4.86,-439.58 -206.26,-544.44 146.69,-33.83 257.18,-130.31 286.64,-329.61zm-512.93 719.26c-69.38,278.78 -538.76,128.08 -690.94,90.29l123.28 -494.2c152.17,37.99 640.17,113.17 567.67,403.91zm69.43 -723.3c-63.29,253.58 -453.96,124.75 -580.69,93.16l111.77 -448.21c126.73,31.59 534.85,90.55 468.94,355.05z"/></svg> BTC</span></td>
+          <td class="address">3J98t1Wp...EZ8Usf6q</td>
+          <td class="balance">0.35000000 BTC</td>
+          <td class="usd-val">$25,060.00</td>
+          <td class="actions"><button class="action-btn" onclick="event.stopPropagation()">&#10005;</button></td>
+        </tr>
+        <tr>
+          <td class="tag-cell">Mining Rewards</td>
+          <td><span class="network-badge kas"><svg width="14" height="14" viewBox="58 28 78 78"><path fill="#49EACB" d="M134.43,66.58c0,5.11-2.11,10.05-3.96,14.5-1.85,4.45-4.71,8.85-8.18,12.32-3.47,3.47-7.64,6.46-12.24,8.37-4.44,1.84-9.46,3.36-14.57,3.36-5.11,0-10.24-1.26-14.68-3.1-4.61-1.91-7.76-6.06-11.23-9.54-3.47-3.47-7.36-6.73-9.27-11.34-1.91-4.61-2.22-9.46-2.22-14.57 0-5.11-0.6-10.53 1.24-14.98 1.91-4.61 5.94-8.29 9.42-11.76 3.47-3.47 7.32-7.1 11.93-9.01 4.44-1.84 9.7-2.03 14.81-2.03 5.11,0 10.06,0.93 14.5,2.77 4.61,1.91 9.05,4.51 12.52,7.99 3.47,3.47 6.48,7.75 8.39,12.35 1.84,4.44 3.54,9.56 3.54,14.67z"/><polygon fill="#FFF" points="98.08,87.16 106.18,88.36 109.4,66.58 106.18,44.79 98.08,45.99 100.39,61.66 83.44,48.61 78.45,55.12 93.32,66.58 78.45,78.03 83.44,84.55 100.39,71.49"/></svg> KAS</span></td>
+          <td class="address">kaspa:qpam...v8dkf7</td>
+          <td class="balance">393,964.62 KAS</td>
+          <td class="usd-val">$12,803.80</td>
+          <td class="actions"><button class="action-btn" onclick="event.stopPropagation()">&#10005;</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<!-- ========== ADD WALLET MODAL ========== -->
+<div class="modal-overlay" id="add-wallet-modal" onclick="if(event.target===this) this.classList.remove('open')">
+  <div class="modal">
+    <h3>Add Wallet</h3>
+    <p class="subtitle">Track a Bitcoin or Kaspa address. No private keys needed.</p>
+
+    <div class="form-group">
+      <label>Network</label>
+      <div class="network-select">
+        <button class="pill active-btc" onclick="selectNetwork(this, 'btc')"><svg width="16" height="16" viewBox="0 0 4091.27 4091.73" style="vertical-align:-2px"><path fill="#F7931A" d="M4030.06 2540.77c-273.24,1096.01 -1383.32,1763.02 -2479.46,1489.71 -1095.68,-273.24 -1762.69,-1383.39 -1489.33,-2479.31 273.12,-1096.13 1383.2,-1763.19 2479,-1489.95 1096.06,273.24 1763.03,1383.51 1489.76,2479.57z"/><path fill="#FFF" d="M2947.77 1754.38c40.72,-272.26 -166.56,-418.61 -450,-516.24l91.95 -368.8 -224.5 -55.94 -89.51 359.09c-59.02,-14.72 -119.63,-28.59 -179.87,-42.34l90.16 -361.46 -224.36 -55.94 -92 368.68c-48.84,-11.12 -96.81,-22.11 -143.35,-33.69l0.26 -1.16 -309.59 -77.31 -59.72 239.78c0,0 166.56,38.18 163.05,40.53 90.91,22.69 107.35,82.87 104.62,130.57l-104.74 420.15c6.26,1.59 14.38,3.89 23.34,7.49 -7.49,-1.86 -15.46,-3.89 -23.73,-5.87l-146.81 588.57c-11.11,27.62 -39.31,69.07 -102.87,53.33 2.25,3.26 -163.17,-40.72 -163.17,-40.72l-111.46 256.98 292.15 72.83c54.35,13.63 107.61,27.89 160.06,41.3l-92.9 373.03 224.24 55.94 92 -369.07c61.26,16.63 120.71,31.97 178.91,46.43l-91.69 367.33 224.51 55.94 92.89 -372.33c382.82,72.45 670.67,43.24 791.83,-303.02 97.63,-278.78 -4.86,-439.58 -206.26,-544.44 146.69,-33.83 257.18,-130.31 286.64,-329.61zm-512.93 719.26c-69.38,278.78 -538.76,128.08 -690.94,90.29l123.28 -494.2c152.17,37.99 640.17,113.17 567.67,403.91zm69.43 -723.3c-63.29,253.58 -453.96,124.75 -580.69,93.16l111.77 -448.21c126.73,31.59 534.85,90.55 468.94,355.05z"/></svg> Bitcoin</button>
+        <button class="pill" onclick="selectNetwork(this, 'kas')"><svg width="16" height="16" viewBox="58 28 78 78" style="vertical-align:-2px"><path fill="#49EACB" d="M134.43,66.58c0,5.11-2.11,10.05-3.96,14.5-1.85,4.45-4.71,8.85-8.18,12.32-3.47,3.47-7.64,6.46-12.24,8.37-4.44,1.84-9.46,3.36-14.57,3.36-5.11,0-10.24-1.26-14.68-3.1-4.61-1.91-7.76-6.06-11.23-9.54-3.47-3.47-7.36-6.73-9.27-11.34-1.91-4.61-2.22-9.46-2.22-14.57 0-5.11-0.6-10.53 1.24-14.98 1.91-4.61 5.94-8.29 9.42-11.76 3.47-3.47 7.32-7.1 11.93-9.01 4.44-1.84 9.7-2.03 14.81-2.03 5.11,0 10.06,0.93 14.5,2.77 4.61,1.91 9.05,4.51 12.52,7.99 3.47,3.47 6.48,7.75 8.39,12.35 1.84,4.44 3.54,9.56 3.54,14.67z"/><polygon fill="#FFF" points="98.08,87.16 106.18,88.36 109.4,66.58 106.18,44.79 98.08,45.99 100.39,61.66 83.44,48.61 78.45,55.12 93.32,66.58 78.45,78.03 83.44,84.55 100.39,71.49"/></svg> Kaspa</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Wallet Address</label>
+      <input type="text" placeholder="bc1q..." id="wallet-address-input">
+      <div class="hint">Paste the public address you want to track</div>
+    </div>
+
+    <div class="form-group">
+      <label>Tag <span style="text-transform:none; letter-spacing:0; font-weight:400;">(optional)</span></label>
+      <input type="text" placeholder="e.g. Cold Storage, Mining Rig">
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-cancel" onclick="document.getElementById('add-wallet-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-submit" onclick="document.getElementById('add-wallet-modal').classList.remove('open')">Add Wallet</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== CHART GLOBAL CONFIG ==========
+Chart.defaults.color = 'rgba(255,255,255,0.35)';
+Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.plugins.legend.display = false;
+Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(12, 18, 32, 0.95)';
+Chart.defaults.plugins.tooltip.borderColor = 'rgba(255,255,255,0.08)';
+Chart.defaults.plugins.tooltip.borderWidth = 1;
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 10;
+Chart.defaults.plugins.tooltip.titleFont = { family: "'JetBrains Mono', monospace", size: 11 };
+Chart.defaults.plugins.tooltip.bodyFont = { family: "'JetBrains Mono', monospace", size: 12, weight: 600 };
+Chart.defaults.scale.grid = { color: 'rgba(255,255,255,0.04)', drawBorder: false };
+Chart.defaults.scale.border = { display: false };
+
+// ========== SAMPLE DATA GENERATOR ==========
+function genLine(n, base, volatility, trend) {
+  const pts = [];
+  let val = base;
+  const now = Date.now();
+  for (let i = n; i >= 0; i--) {
+    val += (Math.random() - 0.48) * volatility + trend;
+    val = Math.max(val, base * 0.7);
+    pts.push({ x: new Date(now - i * 86400000), y: Math.round(val * 100) / 100 });
+  }
+  return pts;
+}
+
+// ========== W6: PORTFOLIO VALUE CHART ==========
+const portfolioData = genLine(30, 130000, 3000, 150);
+new Chart(document.getElementById('portfolioChart'), {
+  type: 'line',
+  data: {
+    datasets: [{
+      data: portfolioData,
+      borderColor: '#49eacb',
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHitRadius: 10,
+      tension: 0.35,
+      fill: {
+        target: 'origin',
+        above: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+          g.addColorStop(0, 'rgba(73, 234, 203, 0.12)');
+          g.addColorStop(1, 'rgba(73, 234, 203, 0)');
+          return g;
+        }
+      }
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' } }, ticks: { maxTicksLimit: 7 } },
+      y: { ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'k', maxTicksLimit: 5 }, beginAtZero: false }
+    },
+    plugins: { tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toLocaleString() } } }
+  }
+});
+
+// ========== W5: COMPOSITION PIE ==========
+new Chart(document.getElementById('compositionChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Bitcoin', 'Kaspa'],
+    datasets: [{
+      data: [132460, 12804],
+      backgroundColor: ['#f7931a', '#49eacb'],
+      borderColor: 'transparent',
+      borderWidth: 0,
+      spacing: 3,
+      borderRadius: 6,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '72%',
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.toLocaleString() } } }
+  }
+});
+
+// ========== W8a: BTC PRICE CHART ==========
+const btcData = genLine(30, 68000, 1500, 120);
+new Chart(document.getElementById('btcPriceChart'), {
+  type: 'line',
+  data: {
+    datasets: [{
+      data: btcData,
+      borderColor: '#f7931a',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      pointHitRadius: 10,
+      tension: 0.35,
+      fill: {
+        target: 'origin',
+        above: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+          g.addColorStop(0, 'rgba(247, 147, 26, 0.1)');
+          g.addColorStop(1, 'rgba(247, 147, 26, 0)');
+          return g;
+        }
+      }
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' } }, ticks: { maxTicksLimit: 6 } },
+      y: { ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'k', maxTicksLimit: 4 } }
+    },
+    plugins: { tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toLocaleString() } } }
+  }
+});
+
+// ========== W8b: KAS PRICE CHART ==========
+const kasData = genLine(30, 0.028, 0.003, 0.0002);
+new Chart(document.getElementById('kasPriceChart'), {
+  type: 'line',
+  data: {
+    datasets: [{
+      data: kasData,
+      borderColor: '#49eacb',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      pointHitRadius: 10,
+      tension: 0.35,
+      fill: {
+        target: 'origin',
+        above: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+          g.addColorStop(0, 'rgba(73, 234, 203, 0.1)');
+          g.addColorStop(1, 'rgba(73, 234, 203, 0)');
+          return g;
+        }
+      }
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'MMM d' } }, ticks: { maxTicksLimit: 6 } },
+      y: { ticks: { callback: v => '$' + v.toFixed(3), maxTicksLimit: 4 } }
+    },
+    plugins: { tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(5) } } }
+  }
+});
+
+// ========== INTERACTIONS ==========
+function setRange(btn) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function simulateRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('refreshing');
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.classList.remove('refreshing');
+    btn.disabled = false;
+    document.querySelector('.last-updated').textContent = 'Updated ' + new Date().toISOString().substr(11, 8) + ' UTC';
+  }, 2000);
+}
+
+function selectNetwork(btn, net) {
+  document.querySelectorAll('.network-select .pill').forEach(p => { p.className = 'pill'; });
+  btn.classList.add(net === 'btc' ? 'active-btc' : 'active-kas');
+  const input = document.getElementById('wallet-address-input');
+  input.placeholder = net === 'btc' ? 'bc1q...' : 'kaspa:...';
+}
+</script>
+</body>
+</html>
