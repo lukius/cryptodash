@@ -8,6 +8,7 @@
 cryptodash/
 ├── .claude/
 │   └── skills/            # Claude Code skills (invoke with /skill-name)
+│       ├── develop-feature/       # /develop-feature — agent team: plan → TDD → review → QA
 │       ├── generate-func-spec/   # /generate-func-spec — functional spec from a brief
 │       └── generate-tech-spec/   # /generate-tech-spec — tech spec from a func spec
 ├── specs/                 # All design artifacts (specs + mockups)
