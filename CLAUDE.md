@@ -21,6 +21,12 @@ Read `specs/` for detailed functional and technical specs before implementing fe
 - Test: `TODO`
 - Lint: `TODO`
 
+## Git & Remote
+
+- **Hosted on GitLab** (private): `gitlab.com:lukius/cryptodash`
+- Use `glab` (not `gh`) for all remote operations: MRs, issues, CI, etc.
+- Example: `glab mr create`, `glab issue list`, `glab ci status`
+
 ## Development Rules
 
 ### Testing — non-negotiable
