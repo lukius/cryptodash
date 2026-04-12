@@ -6,12 +6,15 @@
 
 ```
 cryptodash/
+├── .claude/
+│   └── skills/            # Claude Code skills (invoke with /skill-name)
+│       ├── generate-func-spec/   # /generate-func-spec — functional spec from a brief
+│       └── generate-tech-spec/   # /generate-tech-spec — tech spec from a func spec
 ├── specs/                 # All design artifacts (specs + mockups)
 │   ├── FUNC_SPEC.md       # What the system does
 │   ├── TECH_SPEC.md       # How to build it
 │   ├── TECH_NOTES.md      # Research notes and decision points
 │   └── mockups/           # Interactive HTML mockups (visual source of truth for UI)
-├── commands/              # Claude Code custom commands
 └── ...                    # To be defined — update this tree as code is added
 ```
 

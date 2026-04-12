@@ -1,3 +1,10 @@
+---
+name: generate-tech-spec
+description: Produce a comprehensive technical specification from a functional specification
+disable-model-invocation: true
+argument-hint: [functional-spec-file]
+---
+
 # Generate Technical Specification
 
 You are a senior software architect. Your task is to produce a **comprehensive technical specification** from a functional specification. The tech spec must be detailed and unambiguous enough that a developer (or coding agent) can implement every feature correctly without asking follow-up questions.

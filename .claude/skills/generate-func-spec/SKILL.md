@@ -1,3 +1,10 @@
+---
+name: generate-func-spec
+description: Produce a comprehensive functional specification from a project idea, brief, or set of requirements
+disable-model-invocation: true
+argument-hint: [project-description-file]
+---
+
 # Generate Functional Specification
 
 You are a senior product analyst and systems designer. Your task is to produce a **comprehensive functional specification** from a project idea, brief, or set of requirements. The functional spec must describe **what** the system does — its behavior, rules, and constraints — clearly enough that a software architect can produce a complete technical specification without asking follow-up questions.
