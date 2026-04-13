@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { useApi } from "@/composables/useApi";
-import router from "@/router";
 import type { AuthStatusResponse, LoginResponse } from "@/types/api";
 
 const TOKEN_KEY = "auth_token";
@@ -93,7 +92,6 @@ export const useAuthStore = defineStore("auth", () => {
     clearToken();
     username.value = null;
     accountExists.value = null;
-    router.push("/login");
   }
 
   return {

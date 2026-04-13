@@ -9,8 +9,8 @@ const emit = defineEmits<{
 const auth = useAuthStore();
 const router = useRouter();
 
-function onLogout() {
-  auth.logout();
+async function onLogout() {
+  await auth.logout();
   router.push("/login");
 }
 </script>
@@ -32,3 +32,98 @@ function onLogout() {
     </div>
   </header>
 </template>
+
+<style scoped>
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  background: linear-gradient(
+    90deg,
+    rgba(6, 11, 20, 0.95),
+    rgba(10, 18, 35, 0.95) 40%,
+    rgba(20, 35, 55, 0.9)
+  );
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.logo-mark {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--accent), #3b82f6);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--bg);
+  box-shadow: 0 0 24px var(--accent-glow);
+  flex-shrink: 0;
+}
+
+.logo-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.5rem 0.85rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.header-btn:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.header-btn.accent {
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.header-btn.accent:hover {
+  background: var(--accent-dim);
+  box-shadow: 0 0 20px rgba(73, 234, 203, 0.08);
+}
+</style>
