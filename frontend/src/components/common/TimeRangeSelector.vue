@@ -28,6 +28,7 @@ const ranges: { label: string; value: TimeRange }[] = [
     <button
       v-for="range in ranges"
       :key="range.value"
+      type="button"
       :class="['time-range-btn', { active: props.modelValue === range.value }]"
       @click="emit('update:modelValue', range.value)"
     >

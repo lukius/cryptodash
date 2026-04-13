@@ -141,7 +141,7 @@ const baseOptions = {
         />
       </div>
       <div class="chart-canvas-wrap" style="height: 180px">
-        <Line v-if="btcChartData" :data="btcChartData" :options="baseOptions" />
+        <Line v-if="btcChartData" :key="selectedRange" :data="btcChartData" :options="baseOptions" />
         <div v-else class="empty-chart">
           Not enough data for this time range.
         </div>
@@ -154,7 +154,7 @@ const baseOptions = {
         <span class="chart-title">KAS / USD</span>
       </div>
       <div class="chart-canvas-wrap" style="height: 180px">
-        <Line v-if="kasChartData" :data="kasChartData" :options="baseOptions" />
+        <Line v-if="kasChartData" :key="selectedRange" :data="kasChartData" :options="baseOptions" />
         <div v-else class="empty-chart">
           Not enough data for this time range.
         </div>
