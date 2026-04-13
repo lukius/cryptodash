@@ -173,8 +173,17 @@ For each task that posted `TASK_DONE`, spawn a `tech-lead` teammate:
 > - Do tests cover the acceptance criteria from the task spec?
 >
 > **Frontend** (if applicable)
-> - Does the UI match the mockups in `specs/mockups/`?
-> - Is the component responsive?
+> - **CSS audit (mandatory):** For every new or modified Vue component, verify
+>   that every custom class name used in the template has a corresponding style
+>   definition — either in a `<style scoped>` block in that file, or in the
+>   global `frontend/src/style.css`. A class name with no defined styles is a
+>   bug that automated tools will not catch.
+> - **Visual comparison:** Use the browser MCP to render the live app. Open the
+>   matching mockup (`specs/mockups/`) side-by-side and compare: layout,
+>   spacing, colors, typography, interactive states (hover, active, disabled),
+>   and empty/error states. Do not rely on reading template code to judge
+>   visual correctness — render it.
+> - Is the component responsive at 1280px and 375px?
 > - TypeScript strict mode compliance?
 >
 > Run all automated checks:
@@ -183,6 +192,10 @@ For each task that posted `TASK_DONE`, spawn a `tech-lead` teammate:
 > pytest tests/backend/ -v
 > cd frontend && npx vue-tsc --noEmit && npx eslint src/ && npm run test
 > ```
+>
+> Note: automated checks (vue-tsc, eslint, vitest) do **not** catch missing
+> styles or visual regressions. The CSS audit and browser rendering check above
+> are the only way to catch those.
 >
 > Write your findings (issues + overall verdict) to `tasks/$TASK_ID-review.md`.
 >
@@ -279,14 +292,21 @@ Spawn the `qa-analyst` teammate:
 > - Test auth enforcement: hit protected endpoints without a token → 401.
 > - Test edge cases: empty data, boundary values, concurrent requests.
 >
-> **Frontend validation:**
-> Use the browser MCP (if available) or manual inspection to verify:
-> - Each view renders correctly and matches the mockups.
-> - Navigation flows work (login → dashboard → wallet detail → settings).
-> - Responsive layout at desktop (1280px) and mobile (375px) widths.
-> - Charts render with data and handle empty states.
+> **Frontend visual validation (mandatory — use the browser MCP):**
+> Browser MCP is required for this step. If it is unavailable, block and
+> report — do not skip or substitute with code reading.
+> - Start the dev server (`cd frontend && npm run dev`) and open each view.
+> - Take a screenshot of every view and compare it against the corresponding
+>   mockup in `specs/mockups/`. Flag any visual discrepancy as a failure,
+>   including: unstyled elements, broken layouts, missing colors or icons,
+>   wrong font sizes, invisible or overlapping components.
+> - Navigation flows: login → dashboard → wallet detail → settings → logout
+>   (verify logout actually redirects to /login).
+> - Responsive layout at desktop (1280px) and mobile (375px) — screenshot both.
+> - Every interactive element: hover states, disabled states, loading spinners.
+> - Charts render with data and handle empty states gracefully.
 > - WebSocket real-time updates work (add wallet → dashboard refreshes).
-> - Error states display correctly (API down, invalid input, etc.).
+> - Error states display correctly (API down, invalid input, network failure).
 >
 > **Integration flows** (from `specs/TECH_SPEC.md` section 9.2):
 > - Full user journey: setup → login → add wallet → refresh → dashboard → edit tag → remove → logout.
