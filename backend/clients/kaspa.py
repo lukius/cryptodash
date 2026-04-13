@@ -72,12 +72,12 @@ class KaspaClient(BaseClient):
 
                 inflow = sum(
                     int(out["amount"])
-                    for out in tx.get("outputs", [])
+                    for out in (tx.get("outputs") or [])
                     if out.get("script_public_key_address") == address
                 )
                 outflow = sum(
                     int(inp["previous_outpoint_amount"])
-                    for inp in tx.get("inputs", [])
+                    for inp in (tx.get("inputs") or [])
                     if inp.get("previous_outpoint_address") == address
                 )
                 net = inflow - outflow
