@@ -11,6 +11,7 @@ import {
 } from "@/utils/format";
 import WalletStatusBadge from "@/components/wallet/WalletStatusBadge.vue";
 import EditTagInput from "@/components/wallet/EditTagInput.vue";
+import CoinIcon from "@/components/common/CoinIcon.vue";
 
 const emit = defineEmits<{
   (e: "add-wallet"): void;
@@ -153,6 +154,7 @@ function navigateToWallet(wallet: WalletResponse) {
                   wallet.network === 'BTC' ? 'btc' : 'kas',
                 ]"
               >
+                <CoinIcon :network="wallet.network" :size="14" />
                 {{ wallet.network }}
               </span>
             </td>

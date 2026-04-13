@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useWalletsStore } from "@/stores/wallets";
 import { useApi, ApiError } from "@/composables/useApi";
 import AppHeader from "@/components/layout/AppHeader.vue";
+import CoinIcon from "@/components/common/CoinIcon.vue";
 import LoadingSpinner from "@/components/common/LoadingSpinner.vue";
 import WalletBalanceChart from "@/components/widgets/WalletBalanceChart.vue";
 import EditTagInput from "@/components/wallet/EditTagInput.vue";
@@ -183,6 +184,7 @@ function onWalletRemoved() {
                 class="network-badge"
                 :class="wallet.network === 'BTC' ? 'btc' : 'kas'"
               >
+                <CoinIcon :network="wallet.network" :size="14" />
                 {{ wallet.network }}
               </span>
             </div>

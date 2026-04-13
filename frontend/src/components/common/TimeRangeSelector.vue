@@ -35,3 +35,35 @@ const ranges: { label: string; value: TimeRange }[] = [
     </button>
   </div>
 </template>
+
+<style scoped>
+.time-range {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.time-range-btn {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.time-range-btn:hover {
+  color: var(--text-secondary);
+}
+
+.time-range-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+</style>

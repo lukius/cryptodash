@@ -33,7 +33,7 @@ export interface WalletTagUpdate {
 
 export interface WalletResponse {
   id: string;
-  network: string;
+  network: "BTC" | "KAS";
   address: string;
   tag: string;
   balance: string | null;

@@ -20,7 +20,7 @@ async function onLogout() {
     <div class="header-left">
       <router-link to="/" class="header-logo">
         <span class="logo-mark">CD</span>
-        <span class="logo-title">CryptoDash</span>
+        <span class="logo-title"><span class="logo-crypto">Crypto</span><span class="logo-dash">Dash</span></span>
       </router-link>
     </div>
     <div class="header-right">
@@ -85,7 +85,14 @@ async function onLogout() {
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #fff;
+}
+
+.logo-crypto {
+  color: var(--btc-color);
+}
+
+.logo-dash {
+  color: var(--kas-color);
 }
 
 .header-right {
