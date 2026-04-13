@@ -104,6 +104,8 @@ export const useDashboardStore = defineStore("dashboard", () => {
 
   async function setRange(range: TimeRange): Promise<void> {
     selectedRange.value = range;
+    portfolioHistory.value = null;
+    priceHistory.value = null;
     await Promise.allSettled([
       fetchPortfolioHistory(range),
       fetchPriceHistory(range),

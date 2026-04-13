@@ -53,6 +53,7 @@ const isLoading = ref(false);
 
 async function loadHistory() {
   isLoading.value = true;
+  historyData.value = null;
   try {
     historyData.value = await store.fetchWalletHistory(
       props.walletId,
