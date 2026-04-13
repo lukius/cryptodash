@@ -19,7 +19,7 @@ async function onLogout() {
   <header v-if="auth.isAuthenticated" class="app-header">
     <div class="header-left">
       <router-link to="/" class="header-logo">
-        <span class="logo-mark">CD</span>
+        <img src="/favicon.svg" alt="" class="logo-mark" />
         <span class="logo-title"><span class="logo-crypto">Crypto</span><span class="logo-dash">Dash</span></span>
       </router-link>
     </div>
@@ -69,14 +69,7 @@ async function onLogout() {
 .logo-mark {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, var(--accent), #3b82f6);
   border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--bg);
   box-shadow: 0 0 24px var(--accent-glow);
   flex-shrink: 0;
 }

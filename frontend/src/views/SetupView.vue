@@ -7,7 +7,7 @@
 
   <div class="page">
     <div class="logo">
-      <div class="logo-icon">C</div>
+      <img src="/favicon.svg" alt="" class="logo-icon" />
       <div class="logo-text">
         <span class="cr">Crypto</span><span class="da">Dash</span>
       </div>
@@ -291,14 +291,7 @@ async function handleSubmit() {
 .logo-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, var(--accent), #3b82f6);
   border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--bg);
   box-shadow:
     0 0 40px var(--accent-glow),
     0 0 80px rgba(73, 234, 203, 0.15);
