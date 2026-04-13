@@ -18,3 +18,14 @@ __pycache__/
 
 # Environment
 .env
+
+# Runtime data
+data/
+
+# Build output
+frontend/dist/
+.vite/
+
+# QA / browser test artifacts
+.playwright-mcp/
+qa-*.png

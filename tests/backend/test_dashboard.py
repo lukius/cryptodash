@@ -1,0 +1,529 @@
+"""Tests for Dashboard Router (T09 ST8)."""
+
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+import pytest
+import pytest_asyncio
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from backend.core.dependencies import get_db
+from backend.database import init_db
+from backend.models.balance_snapshot import BalanceSnapshot
+from backend.models.price_snapshot import PriceSnapshot
+from backend.models.wallet import Wallet
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def fresh_engine():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def dashboard_app(fresh_engine):
+    """FastAPI app wired to auth + dashboard routers with fresh in-memory DB."""
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    await init_db(engine=fresh_engine, session_factory=session_factory)
+
+    from backend.routers.auth import router as auth_router
+    from backend.routers.dashboard import router as dashboard_router
+
+    app = FastAPI()
+    app.include_router(auth_router)
+    app.include_router(dashboard_router)
+
+    # Wire mock refresh service on app.state
+    mock_refresh = AsyncMock()
+    mock_refresh.run_full_refresh = AsyncMock()
+
+    from backend.services.refresh import RefreshResult
+
+    mock_refresh.run_full_refresh.return_value = RefreshResult(
+        success_count=2,
+        failure_count=0,
+        skipped=False,
+        errors=[],
+        timestamp=datetime.now(timezone.utc),
+    )
+    app.state.refresh_service = mock_refresh
+
+    async def override_get_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    return app
+
+
+@pytest_asyncio.fixture
+async def dashboard_client(dashboard_app):
+    async with AsyncClient(
+        transport=ASGITransport(app=dashboard_app), base_url="http://test"
+    ) as client:
+        client.app = dashboard_app
+        yield client
+
+
+@pytest_asyncio.fixture
+async def auth_token(dashboard_client):
+    resp = await dashboard_client.post(
+        "/api/auth/setup",
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()["token"]
+
+
+@pytest_asyncio.fixture
+def auth_headers(auth_token):
+    return {"Authorization": f"Bearer {auth_token}"}
+
+
+@pytest_asyncio.fixture
+async def seeded_db(fresh_engine, auth_token, dashboard_client):
+    """Seed the DB with wallets and snapshots for history/composition tests."""
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    now = datetime.now(timezone.utc)
+
+    async with session_factory() as db:
+        # Get the user from auth token (by looking up users table)
+        from sqlalchemy import select
+
+        from backend.models.session import Session as UserSession
+
+        result = await db.execute(
+            select(UserSession).where(UserSession.token == auth_token)
+        )
+        session_row = result.scalar_one_or_none()
+        assert session_row is not None
+        user_id = session_row.user_id
+
+        btc_wallet = Wallet(
+            id="wallet-btc-1",
+            user_id=user_id,
+            network="BTC",
+            address="1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf",
+            tag="BTC Wallet",
+            created_at=now,
+        )
+        kas_wallet = Wallet(
+            id="wallet-kas-1",
+            user_id=user_id,
+            network="KAS",
+            address="kaspa:" + "a" * 61,
+            tag="KAS Wallet",
+            created_at=now,
+        )
+        db.add(btc_wallet)
+        db.add(kas_wallet)
+
+        # Balance snapshots
+        for days_ago in [2, 1, 0]:
+            ts = now - timedelta(days=days_ago, hours=1)
+            db.add(
+                BalanceSnapshot(
+                    id=str(uuid4()),
+                    wallet_id="wallet-btc-1",
+                    balance="1.0",
+                    timestamp=ts,
+                    source="live",
+                )
+            )
+            db.add(
+                BalanceSnapshot(
+                    id=str(uuid4()),
+                    wallet_id="wallet-kas-1",
+                    balance="1000.0",
+                    timestamp=ts,
+                    source="live",
+                )
+            )
+
+        # Price snapshots
+        for days_ago in [2, 1, 0]:
+            ts = now - timedelta(days=days_ago, hours=1)
+            db.add(
+                PriceSnapshot(
+                    id=str(uuid4()),
+                    coin="BTC",
+                    price_usd="50000",
+                    timestamp=ts,
+                )
+            )
+            db.add(
+                PriceSnapshot(
+                    id=str(uuid4()),
+                    coin="KAS",
+                    price_usd="0.05",
+                    timestamp=ts,
+                )
+            )
+
+        await db.commit()
+        return user_id
+
+
+# ---------------------------------------------------------------------------
+# Auth enforcement
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_summary_requires_auth(dashboard_client):
+    resp = await dashboard_client.get("/api/dashboard/summary")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_requires_auth(dashboard_client):
+    resp = await dashboard_client.get("/api/dashboard/portfolio-history")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_wallet_history_requires_auth(dashboard_client):
+    resp = await dashboard_client.get("/api/dashboard/wallet-history/some-id")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_price_history_requires_auth(dashboard_client):
+    resp = await dashboard_client.get("/api/dashboard/price-history")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_composition_requires_auth(dashboard_client):
+    resp = await dashboard_client.get("/api/dashboard/composition")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_endpoint_requires_auth(dashboard_client):
+    resp = await dashboard_client.post("/api/dashboard/refresh")
+    assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /summary — empty portfolio
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_summary_empty_portfolio(dashboard_client, auth_headers):
+    """With no wallets, summary should return zeros/nulls, not 500."""
+    resp = await dashboard_client.get("/api/dashboard/summary", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_btc"] == "0"
+    assert data["total_kas"] == "0"
+    assert data["total_value_usd"] is None or data["total_value_usd"] == "0"
+    assert data["change_24h_usd"] is None
+    assert data["change_24h_pct"] is None
+
+
+# ---------------------------------------------------------------------------
+# GET /summary — with wallets
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_summary_with_wallets(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get("/api/dashboard/summary", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Should have non-zero totals
+    assert Decimal(data["total_btc"]) == Decimal("1.0")
+    assert Decimal(data["total_kas"]) == Decimal("1000.0")
+
+    # USD values
+    btc_val = Decimal(data["btc_value_usd"])
+    kas_val = Decimal(data["kas_value_usd"])
+    assert btc_val == Decimal("50000")
+    assert kas_val == Decimal("50")
+
+    total = Decimal(data["total_value_usd"])
+    assert total == btc_val + kas_val
+
+    # last_updated should be set
+    assert data["last_updated"] is not None
+
+
+@pytest.mark.asyncio
+async def test_summary_has_prices(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get("/api/dashboard/summary", headers=auth_headers)
+    data = resp.json()
+    assert Decimal(data["btc_price_usd"]) == Decimal("50000")
+    assert Decimal(data["kas_price_usd"]) == Decimal("0.05")
+
+
+@pytest.mark.asyncio
+async def test_summary_24h_change_uses_historical_prices(
+    dashboard_client, auth_headers, auth_token, fresh_engine
+):
+    """24h change should use historical prices at ~24h ago, not current price.
+
+    Scenario: BTC balance unchanged (1.0 BTC), but price rose from 40000 to 50000.
+    Expected change: (1.0 * 50000) - (1.0 * 40000) = +10000 USD.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from backend.models.session import Session as UserSession
+
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    now = datetime.now(timezone.utc)
+
+    async with session_factory() as db:
+        result = await db.execute(
+            select(UserSession).where(UserSession.token == auth_token)
+        )
+        session_row = result.scalar_one_or_none()
+        assert session_row is not None
+        user_id = session_row.user_id
+
+        btc_wallet = Wallet(
+            id="wallet-btc-hist",
+            user_id=user_id,
+            network="BTC",
+            address="1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf",
+            tag="BTC Hist",
+            created_at=now,
+        )
+        db.add(btc_wallet)
+
+        # Balance: same 1.0 BTC now and 25h ago
+        db.add(
+            BalanceSnapshot(
+                id=str(uuid4()),
+                wallet_id="wallet-btc-hist",
+                balance="1.0",
+                timestamp=now,
+                source="live",
+            )
+        )
+        db.add(
+            BalanceSnapshot(
+                id=str(uuid4()),
+                wallet_id="wallet-btc-hist",
+                balance="1.0",
+                timestamp=now - timedelta(hours=25),
+                source="live",
+            )
+        )
+
+        # Prices: 40000 at 25h ago, 50000 now
+        db.add(
+            PriceSnapshot(
+                id=str(uuid4()),
+                coin="BTC",
+                price_usd="50000",
+                timestamp=now,
+            )
+        )
+        db.add(
+            PriceSnapshot(
+                id=str(uuid4()),
+                coin="BTC",
+                price_usd="40000",
+                timestamp=now - timedelta(hours=25),
+            )
+        )
+        await db.commit()
+
+    resp = await dashboard_client.get("/api/dashboard/summary", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["change_24h_usd"] is not None
+    # 1.0 BTC * 50000 (now) - 1.0 BTC * 40000 (24h ago) = +10000
+    assert Decimal(data["change_24h_usd"]) == Decimal("10000")
+
+
+# ---------------------------------------------------------------------------
+# GET /portfolio-history
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_returns_data_points(
+    dashboard_client, auth_headers, seeded_db
+):
+    resp = await dashboard_client.get(
+        "/api/dashboard/portfolio-history?range=7d", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["range"] == "7d"
+    assert data["unit"] == "usd"
+    assert isinstance(data["data_points"], list)
+    assert len(data["data_points"]) > 0
+
+    # Each data point has timestamp and value
+    dp = data["data_points"][0]
+    assert "timestamp" in dp
+    assert "value" in dp
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_all_range(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get(
+        "/api/dashboard/portfolio-history?range=all", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["range"] == "all"
+
+
+# ---------------------------------------------------------------------------
+# GET /wallet-history/{wallet_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wallet_history_native(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get(
+        "/api/dashboard/wallet-history/wallet-btc-1?range=7d&unit=native",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["wallet_id"] == "wallet-btc-1"
+    assert data["unit"] == "native"
+    assert len(data["data_points"]) > 0
+    # Native value should be 1.0 BTC
+    assert Decimal(data["data_points"][0]["value"]) == Decimal("1.0")
+
+
+@pytest.mark.asyncio
+async def test_wallet_history_usd(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get(
+        "/api/dashboard/wallet-history/wallet-btc-1?range=7d&unit=usd",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["unit"] == "usd"
+    assert len(data["data_points"]) > 0
+    # 1.0 BTC * 50000 USD = 50000 USD
+    assert Decimal(data["data_points"][0]["value"]) == Decimal("50000")
+
+
+@pytest.mark.asyncio
+async def test_wallet_history_not_found(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get(
+        "/api/dashboard/wallet-history/nonexistent-wallet?range=7d",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /price-history
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_price_history(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get(
+        "/api/dashboard/price-history?range=7d", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["range"] == "7d"
+    assert isinstance(data["btc"], list)
+    assert isinstance(data["kas"], list)
+    assert len(data["btc"]) > 0
+    assert len(data["kas"]) > 0
+    assert Decimal(data["btc"][0]["value"]) == Decimal("50000")
+    assert Decimal(data["kas"][0]["value"]) == Decimal("0.05")
+
+
+# ---------------------------------------------------------------------------
+# GET /composition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_composition(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get(
+        "/api/dashboard/composition", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "segments" in data
+    segments = data["segments"]
+    assert len(segments) >= 1
+
+    networks = {s["network"] for s in segments}
+    assert "BTC" in networks
+    assert "KAS" in networks
+
+    total_pct = sum(Decimal(s["percentage"]) for s in segments)
+    assert abs(total_pct - Decimal("100")) < Decimal("0.01")
+
+
+@pytest.mark.asyncio
+async def test_composition_empty_portfolio(dashboard_client, auth_headers):
+    resp = await dashboard_client.get(
+        "/api/dashboard/composition", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["segments"] == []
+
+
+# ---------------------------------------------------------------------------
+# POST /refresh
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_endpoint_calls_service(dashboard_client, auth_headers):
+    resp = await dashboard_client.post("/api/dashboard/refresh", headers=auth_headers)
+    assert resp.status_code in (200, 202)
+    data = resp.json()
+    assert "skipped" in data
+
+
+@pytest.mark.asyncio
+async def test_refresh_endpoint_returns_202_when_skipped(
+    dashboard_client, auth_headers
+):
+    from backend.services.refresh import RefreshResult
+
+    dashboard_client.app.state.refresh_service.run_full_refresh.return_value = (
+        RefreshResult(
+            success_count=0,
+            failure_count=0,
+            skipped=True,
+            errors=[],
+            timestamp=datetime.now(timezone.utc),
+        )
+    )
+
+    resp = await dashboard_client.post("/api/dashboard/refresh", headers=auth_headers)
+    assert resp.status_code == 202
+    assert resp.json()["skipped"] is True

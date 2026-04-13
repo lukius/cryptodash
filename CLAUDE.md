@@ -17,18 +17,37 @@ cryptodash/
 │   ├── TECH_SPEC.md       # How to build it
 │   ├── TECH_NOTES.md      # Research notes and decision points
 │   └── mockups/           # Interactive HTML mockups (visual source of truth for UI)
-└── ...                    # To be defined — update this tree as code is added
+├── backend/               # Python 3.11+ / FastAPI backend
+│   ├── app.py             # FastAPI app factory (create_app), lifespan, exception handlers
+│   ├── run.py             # Entry point: python run.py
+│   ├── routers/           # HTTP + WebSocket handlers (auth, wallets, dashboard, settings, ws)
+│   ├── services/          # Business logic (auth, wallet, history, refresh)
+│   ├── repositories/      # SQLAlchemy async DB access
+│   ├── clients/           # External API clients (Bitcoin, Kaspa, CoinGecko)
+│   ├── models/            # SQLAlchemy ORM models
+│   ├── schemas/           # Pydantic request/response models
+│   └── core/              # Cross-cutting: scheduler, WebSocket manager, dependencies, exceptions
+├── tests/backend/         # pytest test suite (asyncio_mode=auto)
+├── run.py                 # Entry point: `python run.py`
+├── alembic.ini            # Alembic migrations config
+├── requirements.txt       # Production Python deps
+└── requirements-dev.txt   # Test + lint deps (includes requirements.txt)
 ```
 
 Read `specs/` for detailed functional and technical specs before implementing features. UI mockups in `specs/mockups/` are the visual source of truth — open them in a browser to see the target look-and-feel.
 
 ## Build & Run
 
-<!-- Fill in as the tech stack is chosen -->
-- Build: `TODO`
-- Run: `TODO`
-- Test: `TODO`
-- Lint: `TODO`
+- Install deps: `pip install -r requirements-dev.txt` (uses `.venv` — activate first: `source .venv/bin/activate`)
+- Run: `python run.py`
+- Reset password: `python run.py reset-password`
+- Test (backend): `pytest tests/backend/ -v`
+- Lint (backend): `ruff check backend/ tests/`
+- Format (backend): `ruff format backend/ tests/`
+- Build (frontend): `cd frontend && npm run build`
+- Test (frontend): `cd frontend && npm run test`
+- Lint (frontend): `cd frontend && npm run lint`
+- Dev server (frontend): `cd frontend && npm run dev`
 
 ## Git & Remote
 
@@ -56,14 +75,7 @@ Read `specs/` for detailed functional and technical specs before implementing fe
 
 ## Key Design Decisions
 
-<!-- Record non-obvious architectural and product decisions here. Each entry should explain WHAT was decided and WHY — the kind of context that isn't obvious from reading the code. Examples:
-
-- Why a particular library was chosen over alternatives
-- Security boundaries and trust model
-- Intentional limitations or trade-offs
-- Data flow decisions that affect multiple components
-- Conventions that differ from framework defaults
--->
+- **bcrypt directly, not via passlib** — `passlib==1.7.4` is incompatible with `bcrypt>=4.x`: passlib's internal wrap-bug detection hashes a 200-byte string, but newer bcrypt rejects passwords over 72 bytes. `requirements.txt` uses `bcrypt==5.0.0` directly. The spec's "bcrypt via passlib" recommendation cannot be followed; the `bcrypt` library directly produces equivalent `$2b$12$...` hashes.
 
 ## Caveats & Gotchas
 

@@ -1,0 +1,50 @@
+<script setup lang="ts">
+import { formatTimestamp } from "@/utils/format";
+
+const props = defineProps<{
+  lastUpdated?: string | null;
+  wsConnected?: boolean;
+}>();
+</script>
+
+<template>
+  <footer class="app-footer">
+    <span class="last-updated">
+      Last updated: {{ formatTimestamp(props.lastUpdated) }}
+    </span>
+    <span
+      class="ws-indicator"
+      :class="props.wsConnected ? 'connected' : 'disconnected'"
+    >
+      <span class="ws-dot" />
+    </span>
+  </footer>
+</template>
+
+<style scoped>
+.app-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ws-indicator {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ws-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.connected .ws-dot {
+  background-color: #22c55e;
+}
+
+.disconnected .ws-dot {
+  background-color: #ef4444;
+}
+</style>
