@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useWalletsStore } from "@/stores/wallets";
 import { useApi, ApiError } from "@/composables/useApi";
@@ -117,6 +117,24 @@ onMounted(async () => {
   }
   await loadTransactions();
 });
+
+watch(
+  () => wallet.value?.balance,
+  (newVal, oldVal) => {
+    if (oldVal !== undefined && newVal !== oldVal) {
+      void loadTransactions();
+    }
+  },
+);
+
+watch(
+  () => wallet.value?.history_status,
+  (newStatus, oldStatus) => {
+    if (oldStatus !== undefined && newStatus === "complete" && oldStatus !== "complete") {
+      void loadTransactions();
+    }
+  },
+);
 
 function onWalletRemoved() {
   router.push("/");

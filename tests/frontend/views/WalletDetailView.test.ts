@@ -95,6 +95,94 @@ function makeIndividualWallet(overrides: Record<string, unknown> = {}) {
   };
 }
 
+describe("WalletDetailView — transaction reload on store changes", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    mockPush.mockClear();
+  });
+
+  it("reloads transactions when wallet balance changes after a refresh", async () => {
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useWalletsStore();
+    const wallet = makeIndividualWallet({ network: "KAS", balance: "1000.00" });
+    store.wallets = [wallet] as ReturnType<typeof makeIndividualWallet>[];
+
+    mount(WalletDetailView);
+    await flushPromises();
+
+    const callsAfterMount = (api.get as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // Simulate wallets.fetchWallets() updating the balance (post refresh:completed)
+    store.wallets = [{ ...wallet, balance: "1100.00" }] as ReturnType<typeof makeIndividualWallet>[];
+    await flushPromises();
+
+    expect((api.get as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsAfterMount);
+  });
+
+  it("does not reload transactions when balance is unchanged", async () => {
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useWalletsStore();
+    const wallet = makeIndividualWallet({ network: "KAS", balance: "1000.00" });
+    store.wallets = [wallet] as ReturnType<typeof makeIndividualWallet>[];
+
+    mount(WalletDetailView);
+    await flushPromises();
+
+    const callsAfterMount = (api.get as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // Same balance — no reload expected
+    store.wallets = [{ ...wallet, balance: "1000.00" }] as ReturnType<typeof makeIndividualWallet>[];
+    await flushPromises();
+
+    expect((api.get as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterMount);
+  });
+
+  it("reloads transactions when history_status transitions to 'complete'", async () => {
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useWalletsStore();
+    const wallet = makeIndividualWallet({ history_status: "importing" });
+    store.wallets = [wallet] as ReturnType<typeof makeIndividualWallet>[];
+
+    mount(WalletDetailView);
+    await flushPromises();
+
+    const callsAfterMount = (api.get as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // Simulate history import completing
+    store.wallets = [{ ...wallet, history_status: "complete" }] as ReturnType<typeof makeIndividualWallet>[];
+    await flushPromises();
+
+    expect((api.get as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsAfterMount);
+  });
+
+  it("does not reload transactions when history_status is already 'complete' and doesn't change", async () => {
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useWalletsStore();
+    const wallet = makeIndividualWallet({ history_status: "complete" });
+    store.wallets = [wallet] as ReturnType<typeof makeIndividualWallet>[];
+
+    mount(WalletDetailView);
+    await flushPromises();
+
+    const callsAfterMount = (api.get as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // No status change
+    store.wallets = [{ ...wallet, history_status: "complete" }] as ReturnType<typeof makeIndividualWallet>[];
+    await flushPromises();
+
+    expect((api.get as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterMount);
+  });
+});
+
 describe("WalletDetailView — address display", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
