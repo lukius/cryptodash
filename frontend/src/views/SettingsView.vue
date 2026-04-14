@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
 import { useSettingsStore } from "@/stores/settings";
 import AppHeader from "@/components/layout/AppHeader.vue";
 
 const settings = useSettingsStore();
+const router = useRouter();
 
 type IntervalOption = { label: string; value: number | null };
 
@@ -16,6 +18,8 @@ const intervalOptions: IntervalOption[] = [
 ];
 
 const selected = ref<number | null>(settings.refreshIntervalMinutes);
+const fadingOut = ref(false);
+let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(async () => {
   try {
@@ -26,10 +30,18 @@ onMounted(async () => {
   }
 });
 
+onUnmounted(() => {
+  if (dismissTimer !== null) clearTimeout(dismissTimer);
+});
+
 async function save() {
   settings.error = null;
   try {
     await settings.updateSettings({ refresh_interval_minutes: selected.value });
+    dismissTimer = setTimeout(() => {
+      fadingOut.value = true;
+      setTimeout(() => void router.push("/"), 400);
+    }, 1000);
   } catch {
     // error shown via store.error
   }
@@ -58,7 +70,7 @@ async function save() {
         </router-link>
       </div>
 
-      <div class="settings-card">
+      <div class="settings-card" :class="{ 'fading-out': fadingOut }">
         <h2 class="settings-title">Settings</h2>
 
         <div v-if="settings.isLoading" class="loading-msg">Loading...</div>
@@ -148,6 +160,11 @@ async function save() {
   border-radius: var(--radius);
   padding: 2rem;
   backdrop-filter: blur(12px);
+  transition: opacity 0.4s ease;
+}
+
+.settings-card.fading-out {
+  opacity: 0;
 }
 
 .settings-title {

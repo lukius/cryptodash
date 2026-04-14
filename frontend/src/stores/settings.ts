@@ -43,7 +43,7 @@ export const useSettingsStore = defineStore("settings", () => {
       savedMessageTimer = setTimeout(() => {
         savedMessage.value = null;
         savedMessageTimer = null;
-      }, 3000);
+      }, 1500);
     } catch (err) {
       refreshIntervalMinutes.value = previous;
       error.value =

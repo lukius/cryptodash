@@ -102,7 +102,7 @@ describe("useSettingsStore", () => {
       expect(store.isSaving).toBe(false);
     });
 
-    it("clears savedMessage after 3 seconds", async () => {
+    it("clears savedMessage after 1.5 seconds", async () => {
       const api = makeApi({ put: vi.fn().mockResolvedValue({ refresh_interval_minutes: 15 }) });
       vi.mocked(useApi).mockReturnValue(api);
 
@@ -110,7 +110,9 @@ describe("useSettingsStore", () => {
       await store.updateSettings({ refresh_interval_minutes: 15 });
 
       expect(store.savedMessage).toBe("Settings saved.");
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(1499);
+      expect(store.savedMessage).toBe("Settings saved.");
+      vi.advanceTimersByTime(1);
       expect(store.savedMessage).toBeNull();
     });
 
