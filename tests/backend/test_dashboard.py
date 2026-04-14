@@ -508,6 +508,104 @@ async def test_refresh_endpoint_calls_service(dashboard_client, auth_headers):
     assert "skipped" in data
 
 
+# ---------------------------------------------------------------------------
+# End-of-day snapshot inclusion — regression for "no data for 7d/30d" bug
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def seeded_db_eod_snapshot(fresh_engine, auth_token, dashboard_client):
+    """Seed a wallet that only has a historical end-of-day (23:59:59) snapshot for
+    today, plus price data.  Simulates a sparse HD wallet where the most recent
+    transaction occurred earlier today but the daily snapshot is timestamped at
+    23:59:59 — in the future relative to datetime.now() at query time."""
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    now = datetime.now(timezone.utc)
+
+    async with session_factory() as db:
+        from sqlalchemy import select
+        from backend.models.session import Session as UserSession
+
+        result = await db.execute(
+            select(UserSession).where(UserSession.token == auth_token)
+        )
+        session_row = result.scalar_one_or_none()
+        user_id = session_row.user_id
+
+        btc_wallet = Wallet(
+            id="wallet-btc-eod",
+            user_id=user_id,
+            network="BTC",
+            address="1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf",
+            tag="BTC EOD",
+            created_at=now,
+        )
+        db.add(btc_wallet)
+
+        # Only snapshot: today's end-of-day (23:59:59) — this is in the future if
+        # datetime.now() < 23:59:59 UTC, which is always true before midnight.
+        eod_ts = now.replace(hour=23, minute=59, second=59, microsecond=0)
+        db.add(
+            BalanceSnapshot(
+                id=str(uuid4()),
+                wallet_id="wallet-btc-eod",
+                balance="1.5",
+                timestamp=eod_ts,
+                source="historical",
+            )
+        )
+
+        # Price snapshot from early today (before EOD)
+        db.add(
+            PriceSnapshot(
+                id=str(uuid4()),
+                coin="BTC",
+                price_usd="80000",
+                timestamp=now - timedelta(hours=1),
+            )
+        )
+
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_wallet_history_includes_eod_snapshot_in_7d(
+    dashboard_client, auth_headers, seeded_db_eod_snapshot
+):
+    """wallet-history for 7d must include today's 23:59:59 historical snapshot.
+
+    Regression: when end was set to datetime.now(), end-of-day snapshots were
+    excluded because their timestamp (23:59:59) is in the future.
+    """
+    resp = await dashboard_client.get(
+        "/api/dashboard/wallet-history/wallet-btc-eod?range=7d&unit=native",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["data_points"]) >= 1, (
+        "End-of-day snapshot (23:59:59) must be included in 7d range"
+    )
+    assert Decimal(data["data_points"][0]["value"]) == Decimal("1.5")
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_includes_eod_snapshot_in_30d(
+    dashboard_client, auth_headers, seeded_db_eod_snapshot
+):
+    """portfolio-history for 30d must include today's 23:59:59 historical snapshot."""
+    resp = await dashboard_client.get(
+        "/api/dashboard/portfolio-history?range=30d", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["data_points"]) >= 1, (
+        "End-of-day snapshot (23:59:59) must be included in 30d portfolio history"
+    )
+
+
 @pytest.mark.asyncio
 async def test_refresh_endpoint_returns_202_when_skipped(
     dashboard_client, auth_headers

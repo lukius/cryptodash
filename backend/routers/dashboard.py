@@ -167,7 +167,10 @@ async def get_portfolio_history(
     wallets = await wallet_repo.list_all(current_user.id)
 
     start = _range_start(range)
-    end = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    # Extend end to 23:59:59 of today so that historical end-of-day snapshots
+    # (stored at HH=23, MM=59, SS=59) are included in the query window.
+    end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     # Gather all balance snapshots per wallet in range
     # We build a unified timeline: bucket by timestamp, sum per timestamp key
@@ -248,7 +251,8 @@ async def get_wallet_history(
         )
 
     start = _range_start(range)
-    end = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     snaps = await snap_repo.get_range(
         wallet_id, start or datetime.min.replace(tzinfo=timezone.utc), end
@@ -298,7 +302,8 @@ async def get_price_history(
 
     price_repo = PriceSnapshotRepository(db)
     start = _range_start(range)
-    end = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     btc_snaps = await price_repo.get_range(
         "BTC", start or datetime.min.replace(tzinfo=timezone.utc), end
