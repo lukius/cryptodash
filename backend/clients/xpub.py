@@ -47,7 +47,7 @@ class XpubTransaction:
 
 class XpubClient(BaseClient):
     GAP_LIMIT = 20
-    _CONCURRENCY = 3
+    _CONCURRENCY = 1
 
     def __init__(self):
         super().__init__(base_url="https://mempool.space/api", timeout=30.0)

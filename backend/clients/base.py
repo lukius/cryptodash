@@ -34,7 +34,7 @@ class BaseClient:
         try:
             response = await self._client.get(path, params=params)
             if response.status_code == 429:
-                wait = int(response.headers.get("Retry-After", 60))
+                wait = int(response.headers.get("Retry-After", 10))
                 logger.warning(f"Rate limited on {path}. Waiting {wait}s before retry.")
                 await asyncio.sleep(wait)
                 response = await self._client.get(path, params=params)
