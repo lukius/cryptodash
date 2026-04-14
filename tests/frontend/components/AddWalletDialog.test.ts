@@ -368,6 +368,21 @@ describe("AddWalletDialog", () => {
     expect(wrapper.text()).not.toContain("Extended public key");
   });
 
+  it("clears a prior validation error when a valid zpub is pasted", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    // Simulate user typing a partial BTC address, blurring to trigger error
+    await addressInput.setValue("1bad");
+    await addressInput.trigger("blur");
+    expect(wrapper.text()).toContain("Invalid Bitcoin address format");
+    // Now paste a valid zpub — error should be cleared immediately after paste
+    await addressInput.setValue(
+      "zpub6qgBZX81kMmpeFYY5v3YssHmJXA4hHh6dL9HVpPPKr8dpBiRZXqRT2wiMyLaqkXcX5ARMkHZEk6q6tuGqgkSNoftw2ZEGsD3ok7WsZDkTBA",
+    );
+    await addressInput.trigger("paste");
+    expect(wrapper.text()).not.toContain("Invalid Bitcoin address format");
+  });
+
   // ---- HD wallet submission (regression: Issue 1) ----
 
   it("submits xpub key without client-side validation error", async () => {

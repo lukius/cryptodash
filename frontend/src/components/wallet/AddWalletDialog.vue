@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, nextTick } from "vue";
 import { useWalletsStore } from "@/stores/wallets";
 import {
   validateBtcAddress,
@@ -73,8 +73,12 @@ function validateAddress(): boolean {
   return err === null;
 }
 
-function onAddressPaste() {
+async function onAddressPaste() {
   hasCommitted.value = true;
+  // Wait for v-model to sync the pasted value before validating, so we
+  // validate the new content rather than whatever was there before the paste.
+  await nextTick();
+  validateAddress();
 }
 
 function onAddressBlur() {
