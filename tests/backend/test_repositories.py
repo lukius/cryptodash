@@ -15,6 +15,7 @@ from backend.models import (
 from backend.repositories import (
     BalanceSnapshotRepository,
     ConfigRepository,
+    DerivedAddressRepository,
     PriceSnapshotRepository,
     SessionRepository,
     TransactionRepository,
@@ -1111,3 +1112,255 @@ async def test_config_get_int_returns_none_when_missing(db_session):
     repo = ConfigRepository(db_session)
     result = await repo.get_int("missing_key")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# DerivedAddressRepository
+# ---------------------------------------------------------------------------
+
+
+def make_derived_address_entries(count: int, base_sat: int = 1000) -> list[dict]:
+    """Build a list of address dicts with ascending balance_sat values."""
+    return [
+        {
+            "address": f"bc1qtest{i:04d}",
+            "balance_btc": Decimal(str((base_sat + i) / 1e8)),
+            "balance_sat": base_sat + i,
+        }
+        for i in range(count)
+    ]
+
+
+async def test_derived_address_repo_replace_all(db_session):
+    """replace_all deletes old rows, inserts new rows, ordered by balance_sat desc."""
+    user = make_user("da_alice")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "xpubABC", "HD Wallet")
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = DerivedAddressRepository(db_session)
+    updated_at = _now()
+
+    entries = make_derived_address_entries(3, base_sat=5000)
+    total = await repo.replace_all(wallet.id, entries, updated_at)
+    await db_session.flush()
+
+    assert total == 3
+
+    rows = await repo.get_by_wallet(wallet.id)
+    assert len(rows) == 3
+    # Ordered by balance_sat descending
+    sat_values = [r.balance_sat for r in rows]
+    assert sat_values == sorted(sat_values, reverse=True)
+    # Verify addresses are present
+    addresses = {r.address for r in rows}
+    assert addresses == {e["address"] for e in entries}
+    # Verify balance fields
+    for row in rows:
+        assert row.wallet_id == wallet.id
+        # SQLite strips tzinfo; compare as naive UTC
+        assert row.last_updated_at == updated_at.replace(tzinfo=None)
+
+
+async def test_derived_address_repo_cap_200(db_session):
+    """250 input addresses → exactly 200 stored (top by balance_sat); returns 250."""
+    user = make_user("da_bob")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "xpubDEF", "HD Wallet 2")
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = DerivedAddressRepository(db_session)
+    # Entries with balance_sat from 1000 to 1249 (ascending in the list)
+    entries = make_derived_address_entries(250, base_sat=1000)
+    total = await repo.replace_all(wallet.id, entries, _now())
+    await db_session.flush()
+
+    assert total == 250
+
+    rows = await repo.get_by_wallet(wallet.id)
+    assert len(rows) == 200
+
+    # The top 200 should be entries with the highest balance_sat values.
+    # Entries have balance_sat from 1000 to 1249; top 200 are 1050..1249.
+    stored_sats = {r.balance_sat for r in rows}
+    expected_sats = {1000 + i for i in range(50, 250)}  # top 200 of 1000..1249
+    assert stored_sats == expected_sats
+
+    # Verify descending order
+    sat_list = [r.balance_sat for r in rows]
+    assert sat_list == sorted(sat_list, reverse=True)
+
+
+async def test_derived_address_repo_get_by_wallet_empty(db_session):
+    """get_by_wallet returns empty list for a wallet with no derived addresses."""
+    repo = DerivedAddressRepository(db_session)
+    result = await repo.get_by_wallet(_uuid())
+    assert result == []
+
+
+async def test_derived_address_repo_replace_all_idempotent(db_session):
+    """Calling replace_all twice on the same wallet keeps only the latest set."""
+    user = make_user("da_carol")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "xpubGHI", "HD Wallet 3")
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = DerivedAddressRepository(db_session)
+
+    first_entries = [
+        {
+            "address": "bc1qfirst001",
+            "balance_btc": Decimal("0.001"),
+            "balance_sat": 100000,
+        },
+        {
+            "address": "bc1qfirst002",
+            "balance_btc": Decimal("0.002"),
+            "balance_sat": 200000,
+        },
+    ]
+    await repo.replace_all(wallet.id, first_entries, _now())
+    await db_session.flush()
+
+    second_entries = [
+        {
+            "address": "bc1qsecond001",
+            "balance_btc": Decimal("0.005"),
+            "balance_sat": 500000,
+        },
+        {
+            "address": "bc1qsecond002",
+            "balance_btc": Decimal("0.003"),
+            "balance_sat": 300000,
+        },
+        {
+            "address": "bc1qsecond003",
+            "balance_btc": Decimal("0.001"),
+            "balance_sat": 100000,
+        },
+    ]
+    total = await repo.replace_all(wallet.id, second_entries, _now())
+    await db_session.flush()
+
+    assert total == 3
+
+    rows = await repo.get_by_wallet(wallet.id)
+    assert len(rows) == 3
+
+    addresses = {r.address for r in rows}
+    # Old addresses must be gone; only second set present
+    assert "bc1qfirst001" not in addresses
+    assert "bc1qfirst002" not in addresses
+    assert addresses == {"bc1qsecond001", "bc1qsecond002", "bc1qsecond003"}
+
+    # Descending order by balance_sat
+    sat_list = [r.balance_sat for r in rows]
+    assert sat_list == [500000, 300000, 100000]
+
+
+async def test_derived_address_repo_replace_all_empty(db_session):
+    """replace_all with 0 addresses stores nothing and returns 0."""
+    user = make_user("da_dave")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "xpubJKL", "HD Wallet 4")
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = DerivedAddressRepository(db_session)
+    total = await repo.replace_all(wallet.id, [], _now())
+    await db_session.flush()
+
+    assert total == 0
+    rows = await repo.get_by_wallet(wallet.id)
+    assert rows == []
+
+
+async def test_derived_address_repo_replace_all_atomicity(db_session):
+    """A mid-insert failure rolls back via savepoint; the previous rows survive.
+
+    replace_all issues a DELETE followed by a series of db.add() calls, all
+    within the caller's transaction. This test uses a nested savepoint to
+    isolate the failing replace_all: the initial rows are flushed before the
+    savepoint, the failing call is executed inside the savepoint, and on
+    rollback to the savepoint the initial rows remain intact.
+    """
+    from unittest.mock import patch
+
+    user = make_user("da_eve")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "xpubMNO", "HD Wallet 5")
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = DerivedAddressRepository(db_session)
+
+    # Insert an initial set of rows and flush them into the outer transaction.
+    initial_entries = [
+        {
+            "address": "bc1qorig001",
+            "balance_btc": Decimal("0.01"),
+            "balance_sat": 1000000,
+        },
+        {
+            "address": "bc1qorig002",
+            "balance_btc": Decimal("0.02"),
+            "balance_sat": 2000000,
+        },
+    ]
+    await repo.replace_all(wallet.id, initial_entries, _now())
+    await db_session.flush()
+
+    initial_rows = await repo.get_by_wallet(wallet.id)
+    assert len(initial_rows) == 2
+
+    # Open a savepoint so the failing replace_all can be rolled back without
+    # discarding the initial rows that were flushed above.
+    new_entries = [
+        {
+            "address": "bc1qnew001",
+            "balance_btc": Decimal("0.05"),
+            "balance_sat": 5000000,
+        },
+        {
+            "address": "bc1qnew002",
+            "balance_btc": Decimal("0.03"),
+            "balance_sat": 3000000,
+        },
+    ]
+    call_count = 0
+    real_add = db_session.add
+
+    def failing_add(instance):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise RuntimeError("simulated mid-insert failure")
+        return real_add(instance)
+
+    async with db_session.begin_nested() as savepoint:
+        with patch.object(db_session, "add", side_effect=failing_add):
+            try:
+                await repo.replace_all(wallet.id, new_entries, _now())
+                await db_session.flush()
+            except RuntimeError:
+                pass
+        await savepoint.rollback()
+
+    # After rolling back to the savepoint, the original rows must still exist.
+    surviving_rows = await repo.get_by_wallet(wallet.id)
+    assert len(surviving_rows) == 2
+    surviving_addresses = {r.address for r in surviving_rows}
+    assert surviving_addresses == {"bc1qorig001", "bc1qorig002"}

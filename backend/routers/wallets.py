@@ -13,6 +13,7 @@ from backend.models.user import User
 from backend.repositories.transaction import TransactionRepository
 from backend.repositories.wallet import WalletRepository
 from backend.schemas.wallet import (
+    DerivedAddressResponse,
     TransactionResponse,
     WalletCreate,
     WalletListResponse,
@@ -29,17 +30,34 @@ router = APIRouter(
 
 
 def _wallet_dict_to_response(d: dict) -> WalletResponse:
+    derived: list[DerivedAddressResponse] | None = None
+    raw_derived = d.get("derived_addresses")
+    if raw_derived is not None:
+        derived = [
+            DerivedAddressResponse(
+                address=a["address"],
+                balance_native=a["balance_native"],
+                balance_usd=a.get("balance_usd"),
+            )
+            for a in raw_derived
+        ]
     return WalletResponse(
         id=d["id"],
         network=d["network"],
         address=d["address"],
         tag=d["tag"],
+        wallet_type=d.get("wallet_type", "individual"),
+        extended_key_type=d.get("extended_key_type"),
         balance=d["balance"],
         balance_usd=d["balance_usd"],
         created_at=d["created_at"],
         last_updated=d["last_updated"],
         warning=d["warning"],
         history_status=d["history_status"],
+        derived_addresses=derived,
+        derived_address_count=d.get("derived_address_count"),
+        derived_address_total=d.get("derived_address_total"),
+        hd_loading=d.get("hd_loading", False),
     )
 
 
@@ -76,17 +94,24 @@ async def add_wallet(
             detail=str(exc),
         )
     await db.commit()
+    wallet_type = getattr(wallet, "wallet_type", "individual")
     return WalletResponse(
         id=wallet.id,
         network=wallet.network,
         address=wallet.address,
         tag=wallet.tag,
+        wallet_type=wallet_type,
+        extended_key_type=getattr(wallet, "extended_key_type", None),
         balance=None,
         balance_usd=None,
         created_at=wallet.created_at.isoformat(),
         last_updated=None,
         warning=None,
         history_status="pending",
+        derived_addresses=None,
+        derived_address_count=None,
+        derived_address_total=None,
+        hd_loading=wallet_type == "hd",
     )
 
 
@@ -116,12 +141,18 @@ async def update_wallet_tag(
         network=wallet.network,
         address=wallet.address,
         tag=wallet.tag,
+        wallet_type=getattr(wallet, "wallet_type", "individual"),
+        extended_key_type=getattr(wallet, "extended_key_type", None),
         balance=None,
         balance_usd=None,
         created_at=wallet.created_at.isoformat(),
         last_updated=None,
         warning=None,
         history_status="pending",
+        derived_addresses=None,
+        derived_address_count=None,
+        derived_address_total=None,
+        hd_loading=False,
     )
 
 

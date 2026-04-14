@@ -1,14 +1,16 @@
-"""Tests for SQLAlchemy ORM models (T02)."""
+"""Tests for SQLAlchemy ORM models (T02, T17)."""
 
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from backend.models import (
     BalanceSnapshot,
     Configuration,
+    DerivedAddress,
     PriceSnapshot,
     Session,
     Transaction,
@@ -491,3 +493,233 @@ async def test_configuration_value_required(db_session):
     db_session.add(cfg)
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+# ---------------------------------------------------------------------------
+# HD Wallet — Wallet model extensions (T17)
+# ---------------------------------------------------------------------------
+
+
+async def test_wallet_default_wallet_type_is_individual(db_session):
+    """A freshly created Wallet should have wallet_type='individual' by default."""
+    user = make_user("hd_alice")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "bc1qindividual")
+    db_session.add(wallet)
+    await db_session.flush()
+
+    result = await db_session.get(Wallet, wallet.id)
+    assert result is not None
+    assert result.wallet_type == "individual"
+
+
+async def test_wallet_hd_type_and_extended_key_type(db_session):
+    """An HD wallet stores wallet_type='hd' and extended_key_type='xpub'."""
+    user = make_user("hd_bob")
+    db_session.add(user)
+    await db_session.flush()
+
+    xpub = "x" * 111  # stand-in for a real xpub
+    wallet = Wallet(
+        id=_uuid(),
+        user_id=user.id,
+        network="BTC",
+        address=xpub,
+        tag="BTC HD Wallet #1",
+        created_at=_now(),
+        wallet_type="hd",
+        extended_key_type="xpub",
+    )
+    db_session.add(wallet)
+    await db_session.flush()
+
+    result = await db_session.get(Wallet, wallet.id)
+    assert result is not None
+    assert result.wallet_type == "hd"
+    assert result.extended_key_type == "xpub"
+
+
+async def test_wallet_extended_key_type_nullable(db_session):
+    """extended_key_type may be None for individual wallets."""
+    user = make_user("hd_carol")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "bc1qnulltype")
+    db_session.add(wallet)
+    await db_session.flush()
+
+    result = await db_session.get(Wallet, wallet.id)
+    assert result is not None
+    assert result.extended_key_type is None
+
+
+async def test_wallet_has_derived_addresses_attribute(db_session):
+    """Wallet.derived_addresses relationship exists on the class."""
+    # Verify the relationship attribute exists on the Wallet class
+    assert hasattr(Wallet, "derived_addresses")
+    # Also verify it's a proper relationship (not just any attribute)
+    from sqlalchemy.inspection import inspect as sa_inspect
+
+    mapper = sa_inspect(Wallet)
+    rel_names = [r.key for r in mapper.relationships]
+    assert "derived_addresses" in rel_names
+
+
+# ---------------------------------------------------------------------------
+# DerivedAddress model (T17)
+# ---------------------------------------------------------------------------
+
+
+def make_derived_address(
+    wallet_id: str, address: str = "bc1qderived"
+) -> DerivedAddress:
+    return DerivedAddress(
+        id=_uuid(),
+        wallet_id=wallet_id,
+        address=address,
+        current_balance_native="0.00500000",
+        balance_sat=500000,
+        last_updated_at=_now(),
+    )
+
+
+async def test_derived_address_create_and_query(db_session):
+    """DerivedAddress rows can be inserted and retrieved with all expected columns."""
+    user = make_user("hd_eve")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "bc1qhd_eve")
+    wallet.wallet_type = "hd"
+    wallet.extended_key_type = "xpub"
+    db_session.add(wallet)
+    await db_session.flush()
+
+    derived = make_derived_address(wallet.id, "bc1qaddr1")
+    db_session.add(derived)
+    await db_session.flush()
+
+    result = await db_session.get(DerivedAddress, derived.id)
+    assert result is not None
+    assert result.wallet_id == wallet.id
+    assert result.address == "bc1qaddr1"
+    assert result.current_balance_native == "0.00500000"
+    assert result.balance_sat == 500000
+    assert isinstance(result.last_updated_at, datetime)
+
+
+async def test_derived_address_unique_constraint_wallet_address(db_session):
+    """Inserting two DerivedAddress rows with the same (wallet_id, address) raises IntegrityError."""
+    user = make_user("hd_frank")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "bc1qhd_frank")
+    wallet.wallet_type = "hd"
+    db_session.add(wallet)
+    await db_session.flush()
+
+    d1 = make_derived_address(wallet.id, "bc1qsameaddr")
+    d2 = make_derived_address(wallet.id, "bc1qsameaddr")
+    db_session.add(d1)
+    await db_session.flush()
+
+    db_session.add(d2)
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+async def test_derived_address_same_address_different_wallet_allowed(db_session):
+    """Same derived address string may appear under two different HD wallets."""
+    user = make_user("hd_grace")
+    db_session.add(user)
+    await db_session.flush()
+
+    w1 = make_wallet(user.id, "BTC", "xpub_w1" + "a" * 104)
+    w1.wallet_type = "hd"
+    w2 = make_wallet(user.id, "BTC", "xpub_w2" + "b" * 104)
+    w2.wallet_type = "hd"
+    db_session.add(w1)
+    db_session.add(w2)
+    await db_session.flush()
+
+    d1 = make_derived_address(w1.id, "bc1qshared")
+    d2 = make_derived_address(w2.id, "bc1qshared")
+    db_session.add(d1)
+    db_session.add(d2)
+    await db_session.flush()  # must not raise
+
+
+async def test_wallet_cascade_delete_derived_addresses(db_session):
+    """Deleting a Wallet cascades to its DerivedAddress rows."""
+    user = make_user("hd_henry")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id, "BTC", "bc1qhd_henry")
+    wallet.wallet_type = "hd"
+    db_session.add(wallet)
+    await db_session.flush()
+
+    d1 = make_derived_address(wallet.id, "bc1qchild1")
+    d2 = make_derived_address(wallet.id, "bc1qchild2")
+    db_session.add(d1)
+    db_session.add(d2)
+    await db_session.flush()
+
+    d1_id = d1.id
+    d2_id = d2.id
+
+    await db_session.delete(wallet)
+    await db_session.flush()
+
+    assert (
+        await db_session.get(DerivedAddress, d1_id) is None
+    ), "DerivedAddress d1 should be deleted when wallet is deleted"
+    assert (
+        await db_session.get(DerivedAddress, d2_id) is None
+    ), "DerivedAddress d2 should be deleted when wallet is deleted"
+
+
+async def test_wallet_server_default_wallet_type_on_raw_insert(db_session):
+    """Rows inserted via raw SQL without wallet_type get server_default='individual'.
+
+    This test exercises the migration's server_default path directly — the most
+    important acceptance criterion for T17 (existing rows are classified correctly
+    without a data migration step).
+    """
+    user = make_user("hd_iris")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet_id = _uuid()
+    # Insert via raw SQL, deliberately omitting wallet_type and extended_key_type
+    await db_session.execute(
+        text(
+            "INSERT INTO wallets (id, user_id, network, address, tag, created_at)"
+            " VALUES (:id, :user_id, :network, :address, :tag, :created_at)"
+        ),
+        {
+            "id": wallet_id,
+            "user_id": user.id,
+            "network": "BTC",
+            "address": "bc1qrawinsert",
+            "tag": "raw wallet",
+            "created_at": _now().isoformat(),
+        },
+    )
+    await db_session.flush()
+
+    # Read the row back via raw SQL to bypass the ORM default
+    result = await db_session.execute(
+        text("SELECT wallet_type FROM wallets WHERE id = :id"),
+        {"id": wallet_id},
+    )
+    row = result.fetchone()
+    assert row is not None
+    assert (
+        row[0] == "individual"
+    ), "server_default must set wallet_type='individual' for rows inserted without the column"

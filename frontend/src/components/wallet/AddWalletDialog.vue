@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useWalletsStore } from "@/stores/wallets";
-import { validateBtcAddress, validateKasAddress } from "@/utils/validation";
+import {
+  validateBtcAddress,
+  validateKasAddress,
+  detectBtcInputType,
+} from "@/utils/validation";
 import { ApiError } from "@/composables/useApi";
 
 defineProps<{
@@ -21,6 +25,7 @@ const tag = ref("");
 const addressError = ref<string | null>(null);
 const apiError = ref<string | null>(null);
 const isSubmitting = ref(false);
+const hasCommitted = ref(false);
 
 const tagPlaceholder = computed(() => {
   const prefix = network.value === "BTC" ? "BTC" : "KAS";
@@ -28,9 +33,26 @@ const tagPlaceholder = computed(() => {
   return `e.g. ${prefix} Wallet #${n}`;
 });
 
+const isExtendedKey = computed(
+  () => network.value === "BTC" && detectBtcInputType(address.value) === "hd",
+);
+
+const addressLabel = computed(() =>
+  hasCommitted.value && isExtendedKey.value
+    ? "Extended public key (xpub/ypub/zpub)"
+    : "Wallet address",
+);
+
+const addressPlaceholder = computed(() =>
+  network.value === "BTC"
+    ? "Bitcoin address or extended public key (xpub/ypub/zpub)"
+    : "kaspa:...",
+);
+
 function selectNetwork(n: "BTC" | "KAS") {
   network.value = n;
   addressError.value = null;
+  hasCommitted.value = false;
 }
 
 function validateAddress(): boolean {
@@ -39,14 +61,25 @@ function validateAddress(): boolean {
     addressError.value = "Please enter a wallet address.";
     return false;
   }
+  // For BTC HD wallet inputs (xpub/ypub/zpub), skip client-side validation —
+  // the backend performs full Base58Check verification (FR-H03).
+  if (network.value === "BTC" && detectBtcInputType(raw) === "hd") {
+    addressError.value = null;
+    return true;
+  }
   const err =
     network.value === "BTC" ? validateBtcAddress(raw) : validateKasAddress(raw);
   addressError.value = err;
   return err === null;
 }
 
+function onAddressPaste() {
+  hasCommitted.value = true;
+}
+
 function onAddressBlur() {
   if (address.value.trim()) {
+    hasCommitted.value = true;
     validateAddress();
   }
 }
@@ -159,21 +192,24 @@ async function submit() {
       </div>
 
       <div class="form-group">
-        <label for="wallet-address">Wallet Address</label>
+        <label for="wallet-address">{{ addressLabel }}</label>
         <textarea
           id="wallet-address"
           data-testid="address-input"
           v-model="address"
-          :placeholder="
-            network === 'BTC' ? 'bc1q... or 1... or 3...' : 'kaspa:...'
-          "
+          :placeholder="addressPlaceholder"
           rows="2"
           :class="{ 'input-error': addressError }"
+          @paste="onAddressPaste"
           @blur="onAddressBlur"
         />
         <div v-if="addressError" class="error-text">{{ addressError }}</div>
         <div v-else class="hint">
           Paste the public address you want to track
+        </div>
+        <div v-if="network === 'BTC'" class="hint trezor-hint">
+          Find your extended public key in Trezor Suite under Account &rarr;
+          Details &rarr; Show public key.
         </div>
       </div>
 
@@ -319,6 +355,10 @@ textarea:focus {
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.38);
   margin-top: 0.3rem;
+}
+
+.trezor-hint {
+  margin-top: 0.5rem;
 }
 
 .api-error {

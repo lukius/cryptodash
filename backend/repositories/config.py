@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.configuration import Configuration
@@ -50,3 +50,13 @@ class ConfigRepository:
         if value is None:
             return None
         return int(value)
+
+    async def delete_by_prefix(self, prefix: str) -> int:
+        """Delete all configuration rows whose key starts with *prefix*.
+
+        Returns the number of rows deleted.
+        """
+        result = await self.db.execute(
+            delete(Configuration).where(Configuration.key.startswith(prefix))
+        )
+        return result.rowcount

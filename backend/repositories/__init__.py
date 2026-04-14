@@ -1,4 +1,5 @@
 from backend.repositories.config import ConfigRepository
+from backend.repositories.derived_address import DerivedAddressRepository
 from backend.repositories.session import SessionRepository
 from backend.repositories.snapshot import (
     BalanceSnapshotRepository,
@@ -10,6 +11,7 @@ from backend.repositories.wallet import WalletRepository
 
 __all__ = [
     "ConfigRepository",
+    "DerivedAddressRepository",
     "SessionRepository",
     "BalanceSnapshotRepository",
     "PriceSnapshotRepository",

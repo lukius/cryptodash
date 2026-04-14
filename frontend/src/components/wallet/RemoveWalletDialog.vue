@@ -66,7 +66,10 @@ async function confirm() {
         </svg>
       </div>
       <h3 id="remove-title">Remove '{{ wallet.tag }}'?</h3>
-      <p>All historical data for this wallet will be deleted.</p>
+      <p v-if="wallet.wallet_type === 'hd'">
+        All historical data for this HD wallet will be deleted.
+      </p>
+      <p v-else>All historical data for this wallet will be deleted.</p>
       <div v-if="error" class="error-text">{{ error }}</div>
       <div class="btn-row">
         <button type="button" class="btn-cancel" @click="close">Cancel</button>

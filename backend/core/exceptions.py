@@ -27,6 +27,14 @@ class InvalidSessionError(CryptoDashError): ...
 class AddressValidationError(CryptoDashError): ...
 
 
+class ExtendedKeyValidationError(AddressValidationError):
+    """Raised for xpub/ypub/zpub format errors.
+
+    Subclasses AddressValidationError so the existing 400 handler catches it
+    without modification.
+    """
+
+
 class DuplicateWalletError(CryptoDashError): ...
 
 

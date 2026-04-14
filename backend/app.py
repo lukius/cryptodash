@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.clients.bitcoin import BitcoinClient
 from backend.clients.coingecko import CoinGeckoClient
 from backend.clients.kaspa import KaspaClient
+from backend.clients.xpub import XpubClient
 from backend.core.exceptions import (
     AccountExistsError,
     AccountNotFoundError,
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     app.state.btc_client = BitcoinClient()
     app.state.kas_client = KaspaClient()
     app.state.coingecko_client = CoinGeckoClient()
+    app.state.xpub_client = XpubClient()
     app.state.ws_manager = ConnectionManager()
 
     app.state.history_service = HistoryService(
@@ -53,6 +55,7 @@ async def lifespan(app: FastAPI):
         kas_client=app.state.kas_client,
         coingecko_client=app.state.coingecko_client,
         ws_manager=app.state.ws_manager,
+        xpub_client=app.state.xpub_client,
     )
     app.state.refresh_service = RefreshService(
         session_factory=async_session,
@@ -61,6 +64,7 @@ async def lifespan(app: FastAPI):
         coingecko_client=app.state.coingecko_client,
         ws_manager=app.state.ws_manager,
         history_service=app.state.history_service,
+        xpub_client=app.state.xpub_client,
     )
 
     from backend.repositories.config import ConfigRepository
@@ -86,6 +90,7 @@ async def lifespan(app: FastAPI):
     await app.state.btc_client.close()
     await app.state.kas_client.close()
     await app.state.coingecko_client.close()
+    await app.state.xpub_client.close()
     logger.info("CryptoDash stopped")
 
 

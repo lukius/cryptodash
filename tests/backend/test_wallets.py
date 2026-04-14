@@ -607,6 +607,248 @@ async def test_idor_update_tag_other_user_wallet_returns_not_found(fresh_engine)
             await service.update_tag(wallet_a.id, "Hijacked")
 
 
+# ---------------------------------------------------------------------------
+# BTC input routing — individual vs HD wallet detection (TECH_SPEC_HD_WALLETS §9.3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_add_wallet_btc_detects_individual_vs_hd(wallet_client, auth_headers):
+    """Same POST /api/wallets endpoint with BTC network routes correctly:
+    individual address → individual_btc path; xpub key → hd_wallet path."""
+    # Individual BTC address
+    resp_ind = await add_wallet(
+        wallet_client, auth_headers, "BTC", VALID_BTC, "Individual"
+    )
+    assert resp_ind.status_code == 201
+    assert resp_ind.json()["wallet_type"] == "individual"
+
+    # Valid xpub key — must be detected and routed to HD wallet path
+    # Using a known-valid BIP32 test vector xpub (111 chars, valid checksum)
+    xpub = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
+    resp_hd = await add_wallet(wallet_client, auth_headers, "BTC", xpub, "HD")
+    assert resp_hd.status_code == 201
+    assert resp_hd.json()["wallet_type"] == "hd"
+    assert resp_hd.json()["extended_key_type"] == "xpub"
+
+
+@pytest.mark.asyncio
+async def test_add_wallet_btc_unrecognized_length_heuristic(
+    wallet_client, auth_headers
+):
+    """111-char BTC input with unrecognized prefix → 400 'Unrecognized key format' (FR-H05)."""
+    # 111-char string that isn't a valid individual address or recognized extended key prefix
+    bad_input = "abcd" + "A" * 107
+    assert len(bad_input) == 111
+    resp = await add_wallet(wallet_client, auth_headers, "BTC", bad_input)
+    assert resp.status_code == 400
+    assert "Unrecognized key format" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# HD wallet — list response shape (ST6)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_list_response_shape(wallet_client, auth_headers, fresh_engine):
+    """GET /api/wallets returns correct HD fields when an HD wallet has stored
+    derived addresses and a hd_address_count config key."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from backend.models.balance_snapshot import BalanceSnapshot
+    from backend.models.configuration import Configuration
+    from backend.models.derived_address import DerivedAddress
+
+    # Known-valid BIP32 test vector xpub (111 chars, valid checksum)
+    xpub = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
+    resp = await add_wallet(wallet_client, auth_headers, "BTC", xpub, "My Ledger")
+    assert resp.status_code == 201
+    wallet_id = resp.json()["id"]
+
+    # Insert a balance snapshot, derived address rows, and a config key directly
+    # via DB — simulating the state after a successful initial background fetch.
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with session_factory() as db:
+        now = datetime.now(timezone.utc)
+        # Balance snapshot — marks the initial fetch as complete (hd_loading=False)
+        db.add(
+            BalanceSnapshot(
+                id="snap-hd-1",
+                wallet_id=wallet_id,
+                balance="0.15000000",
+                timestamp=now,
+                source="api",
+            )
+        )
+        da1 = DerivedAddress(
+            id="da-test-1",
+            wallet_id=wallet_id,
+            address="bc1q" + "a" * 38,
+            current_balance_native="0.10000000",
+            balance_sat=10_000_000,
+            last_updated_at=now,
+        )
+        da2 = DerivedAddress(
+            id="da-test-2",
+            wallet_id=wallet_id,
+            address="1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf",
+            current_balance_native="0.05000000",
+            balance_sat=5_000_000,
+            last_updated_at=now,
+        )
+        db.add(da1)
+        db.add(da2)
+        # Config key indicating total > stored count
+        db.add(
+            Configuration(
+                key=f"hd_address_count:{wallet_id}",
+                value="250",
+                updated_at=now,
+            )
+        )
+        await db.commit()
+
+    # Call the list endpoint
+    list_resp = await wallet_client.get("/api/wallets/", headers=auth_headers)
+    assert list_resp.status_code == 200
+    data = list_resp.json()
+    assert data["count"] == 1
+    w = data["wallets"][0]
+
+    # Core HD shape fields
+    assert w["wallet_type"] == "hd"
+    assert w["extended_key_type"] == "xpub"
+    assert w["hd_loading"] is False
+
+    # derived_addresses is a list with the right length and fields
+    assert isinstance(w["derived_addresses"], list)
+    assert len(w["derived_addresses"]) == 2
+    addr_map = {a["address"]: a for a in w["derived_addresses"]}
+    assert "bc1q" + "a" * 38 in addr_map
+    assert "1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf" in addr_map
+    for entry in w["derived_addresses"]:
+        assert "address" in entry
+        assert "balance_native" in entry
+        assert "balance_usd" in entry  # may be None — just must be present
+
+    # Counts: stored count = 2, total from config = 250
+    assert w["derived_address_count"] == 2
+    assert w["derived_address_total"] == 250
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_loading_state_before_first_fetch(wallet_client, auth_headers):
+    """GET /api/wallets immediately after POST returns hd_loading=True for an HD
+    wallet that has no balance snapshot yet (initial fetch not yet complete)."""
+    xpub = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
+    resp = await add_wallet(wallet_client, auth_headers, "BTC", xpub, "Fresh HD")
+    assert resp.status_code == 201
+
+    # No balance snapshot has been written — background fetch has not run.
+    list_resp = await wallet_client.get("/api/wallets/", headers=auth_headers)
+    assert list_resp.status_code == 200
+    w = list_resp.json()["wallets"][0]
+
+    assert w["wallet_type"] == "hd"
+    assert w["balance"] is None
+    assert w["hd_loading"] is True
+
+
+# ---------------------------------------------------------------------------
+# HD wallet — delete cascades derived_addresses and config key (ST7)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_remove_cascades(wallet_client, auth_headers, fresh_engine):
+    """DELETE /api/wallets/{id} for an HD wallet removes the wallet, its
+    derived_addresses rows, and the hd_address_count config key."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from backend.models.configuration import Configuration
+    from backend.models.derived_address import DerivedAddress
+
+    # Known-valid BIP32 test vector xpub
+    xpub = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
+    resp = await add_wallet(wallet_client, auth_headers, "BTC", xpub, "HD To Delete")
+    assert resp.status_code == 201
+    wallet_id = resp.json()["id"]
+
+    # Insert derived address row and config key directly
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with session_factory() as db:
+        now = datetime.now(timezone.utc)
+        da = DerivedAddress(
+            id="da-cascade-1",
+            wallet_id=wallet_id,
+            address="bc1q" + "b" * 38,
+            current_balance_native="0.01000000",
+            balance_sat=1_000_000,
+            last_updated_at=now,
+        )
+        db.add(da)
+        db.add(
+            Configuration(
+                key=f"hd_address_count:{wallet_id}",
+                value="42",
+                updated_at=now,
+            )
+        )
+        await db.commit()
+
+    # Delete wallet via API
+    del_resp = await wallet_client.delete(
+        f"/api/wallets/{wallet_id}", headers=auth_headers
+    )
+    assert del_resp.status_code == 204
+
+    # Verify derived_addresses rows are gone
+    async with session_factory() as db:
+        da_result = await db.execute(
+            select(DerivedAddress).where(DerivedAddress.wallet_id == wallet_id)
+        )
+        assert da_result.scalar_one_or_none() is None
+
+        # Verify config key is gone
+        cfg_result = await db.execute(
+            select(Configuration).where(
+                Configuration.key == f"hd_address_count:{wallet_id}"
+            )
+        )
+        assert cfg_result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_loading_state_returns_nulls(wallet_client, auth_headers):
+    """GET /api/wallets for an HD wallet with no balance snapshot (hd_loading=True)
+    must return derived_addresses=null, derived_address_count=null,
+    derived_address_total=null — not empty arrays or zeros (BUG-01 regression)."""
+    xpub = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
+    resp = await add_wallet(wallet_client, auth_headers, "BTC", xpub, "Loading HD")
+    assert resp.status_code == 201
+
+    # No balance snapshot written — wallet is in loading state.
+    list_resp = await wallet_client.get("/api/wallets/", headers=auth_headers)
+    assert list_resp.status_code == 200
+    w = list_resp.json()["wallets"][0]
+
+    assert w["hd_loading"] is True
+    assert w["history_status"] == "pending"
+    assert w["derived_addresses"] is None
+    assert w["derived_address_count"] is None
+    assert w["derived_address_total"] is None
+
+
 @pytest.mark.asyncio
 async def test_idor_remove_wallet_other_user_returns_not_found(fresh_engine):
     """User B cannot delete a wallet owned by User A — service raises WalletNotFoundError."""

@@ -31,17 +31,29 @@ export interface WalletTagUpdate {
   tag: string;
 }
 
+export interface DerivedAddressResponse {
+  address: string;
+  balance_native: string;
+  balance_usd: string | null;
+}
+
 export interface WalletResponse {
   id: string;
-  network: "BTC" | "KAS";
+  network: string;
   address: string;
   tag: string;
+  wallet_type: "individual" | "hd";
+  extended_key_type: "xpub" | "ypub" | "zpub" | null;
   balance: string | null;
   balance_usd: string | null;
   created_at: string;
   last_updated: string | null;
   warning: string | null;
-  history_status: string;
+  history_status: "complete" | "importing" | "failed" | "pending";
+  derived_addresses: DerivedAddressResponse[] | null;
+  derived_address_count: number | null;
+  derived_address_total: number | null;
+  hd_loading: boolean;
 }
 
 export interface WalletListResponse {

@@ -72,3 +72,15 @@ export function validateKasAddress(address: string): string | null {
 
   return "Invalid Kaspa address format. Kaspa addresses start with 'kaspa:'.";
 }
+
+export function detectBtcInputType(
+  value: string,
+): "individual" | "hd" | "unknown" {
+  const s = value.trim();
+  const HD_PREFIXES = ["xpub", "ypub", "zpub", "tpub", "upub", "vpub"];
+  if (HD_PREFIXES.some((p) => s.startsWith(p))) return "hd";
+  const BTC_PREFIXES = ["1", "3", "bc1q", "bc1p"];
+  if (BTC_PREFIXES.some((p) => s.startsWith(p))) return "individual";
+  if (s.length >= 107 && s.length <= 115) return "hd";
+  return "unknown";
+}

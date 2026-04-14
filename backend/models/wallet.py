@@ -9,6 +9,7 @@ from backend.database import Base
 if TYPE_CHECKING:
     from backend.models.transaction import Transaction
     from backend.models.balance_snapshot import BalanceSnapshot
+    from backend.models.derived_address import DerivedAddress
 
 
 class Wallet(Base):
@@ -28,9 +29,20 @@ class Wallet(Base):
     tag: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
+    # HD wallet fields (nullable; present iff wallet_type == "hd")
+    wallet_type: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="individual", server_default="individual"
+    )  # "individual" | "hd"
+    extended_key_type: Mapped[str | None] = mapped_column(
+        String(4), nullable=True
+    )  # "xpub" | "ypub" | "zpub" | None
+
     transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="wallet", cascade="all, delete-orphan"
     )
     balance_snapshots: Mapped[list["BalanceSnapshot"]] = relationship(
+        back_populates="wallet", cascade="all, delete-orphan"
+    )
+    derived_addresses: Mapped[list["DerivedAddress"]] = relationship(
         back_populates="wallet", cascade="all, delete-orphan"
     )

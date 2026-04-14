@@ -7,14 +7,18 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from backend.clients.xpub import SATOSHI
 from backend.models.balance_snapshot import BalanceSnapshot
 from backend.models.price_snapshot import PriceSnapshot
 from backend.models.wallet import Wallet
+from backend.repositories.config import ConfigRepository
+from backend.repositories.derived_address import DerivedAddressRepository
 from backend.repositories.snapshot import (
     BalanceSnapshotRepository,
     PriceSnapshotRepository,
 )
 from backend.repositories.wallet import WalletRepository
+from backend.services.wallet import normalize_to_xpub
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,7 @@ class RefreshService:
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client=None,
     ) -> None:
         self._session_factory = session_factory
         self.btc_client = btc_client
@@ -46,6 +51,7 @@ class RefreshService:
         self.coingecko_client = coingecko_client
         self.ws_manager = ws_manager
         self.history_service = history_service
+        self.xpub_client = xpub_client
         self._lock = asyncio.Lock()
 
     async def run_full_refresh(self) -> RefreshResult:
@@ -101,7 +107,7 @@ class RefreshService:
             self._lock.release()
 
     async def refresh_single_wallet(self, wallet: Wallet) -> BalanceSnapshot | None:
-        """Fetches balance for one wallet. Used for initial fetch after adding.
+        """Fetches balance for one individual wallet. Used for initial fetch after adding.
 
         Does NOT acquire _lock (runs independently).
         Returns: BalanceSnapshot or None on failure.
@@ -123,6 +129,61 @@ class RefreshService:
         except Exception as exc:
             logger.warning("Balance fetch failed for %s: %s", wallet.tag, exc)
             return None
+
+    async def refresh_single_hd_wallet(self, wallet: Wallet) -> BalanceSnapshot | None:
+        """Fetches aggregate balance + derived address list for one HD wallet.
+
+        Updates DerivedAddress cache. Stores a BalanceSnapshot.
+        Does NOT acquire _lock (same as refresh_single_wallet for individual wallets).
+        Returns: BalanceSnapshot or None on failure.
+        """
+        if self.xpub_client is None:
+            raise RuntimeError("xpub_client is required for HD wallet refresh")
+        xpub = normalize_to_xpub(wallet.address)
+        try:
+            summary = await self.xpub_client.get_xpub_summary(xpub)
+        except Exception as exc:
+            logger.warning("HD wallet balance fetch failed for %s: %s", wallet.tag, exc)
+            return None
+
+        now = datetime.now(timezone.utc)
+
+        snapshot = BalanceSnapshot(
+            id=str(uuid4()),
+            wallet_id=wallet.id,
+            balance=str(summary.balance_btc),
+            timestamp=now,
+            source="live",
+        )
+
+        addr_entries = [
+            {
+                "address": a.address,
+                "balance_btc": Decimal(a.balance_sat) / SATOSHI,
+                "balance_sat": a.balance_sat,
+            }
+            for a in summary.derived_addresses
+        ]
+
+        async with self._session_factory() as db:
+            snap_repo = BalanceSnapshotRepository(db)
+            await snap_repo.create(snapshot)
+
+            derived_repo = DerivedAddressRepository(db)
+            total_count = await derived_repo.replace_all(
+                wallet_id=wallet.id,
+                addresses=addr_entries,
+                updated_at=now,
+            )
+
+            # Write hd_address_count config key if total exceeds display cap (FR-H15)
+            if total_count > 200:
+                config_repo = ConfigRepository(db)
+                await config_repo.set(f"hd_address_count:{wallet.id}", str(total_count))
+
+            await db.commit()
+
+        return snapshot
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -170,13 +231,17 @@ class RefreshService:
     async def _fetch_all_wallets(
         self, db: AsyncSession, wallets: list[Wallet]
     ) -> list[dict]:
-        """Fetch balances for all wallets in parallel (up to _MAX_CONCURRENT at once)."""
+        """Fetch balances for all wallets (individual and HD) in parallel."""
         semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
         async def fetch_one(wallet: Wallet) -> dict:
             async with semaphore:
                 try:
-                    balance = await self._get_balance(wallet)
+                    if wallet.wallet_type == "hd":
+                        balance = await self._get_hd_balance(wallet, db)
+                    else:
+                        balance = await self._get_balance(wallet)
+
                     snap = BalanceSnapshot(
                         id=str(uuid4()),
                         wallet_id=wallet.id,
@@ -188,7 +253,16 @@ class RefreshService:
                     await snap_repo.create(snap)
 
                     try:
-                        await self.history_service.incremental_sync(wallet)
+                        # History sync runs after the balance snapshot and derived
+                        # addresses are written to the shared session.  The outer
+                        # run_full_refresh() commits that session after all wallets
+                        # finish; incremental_sync / incremental_sync_hd open their
+                        # own sessions internally — the same two-phase pattern used
+                        # for individual wallets.
+                        if wallet.wallet_type == "hd":
+                            await self.history_service.incremental_sync_hd(wallet)
+                        else:
+                            await self.history_service.incremental_sync(wallet)
                     except Exception as sync_exc:
                         logger.warning(
                             "Incremental sync failed for %s: %s", wallet.tag, sync_exc
@@ -204,6 +278,38 @@ class RefreshService:
                     }
 
         return list(await asyncio.gather(*[fetch_one(w) for w in wallets]))
+
+    async def _get_hd_balance(self, wallet: Wallet, db: AsyncSession) -> Decimal:
+        """Fetch balance for an HD wallet and update the derived address cache.
+
+        Called from the full refresh loop; uses the shared db session.
+        Raises on API failure (caught by fetch_one).
+        """
+        xpub = normalize_to_xpub(wallet.address)
+        summary = await self.xpub_client.get_xpub_summary(xpub)
+
+        now = datetime.now(timezone.utc)
+        addr_entries = [
+            {
+                "address": a.address,
+                "balance_btc": Decimal(a.balance_sat) / SATOSHI,
+                "balance_sat": a.balance_sat,
+            }
+            for a in summary.derived_addresses
+        ]
+
+        derived_repo = DerivedAddressRepository(db)
+        total_count = await derived_repo.replace_all(
+            wallet_id=wallet.id,
+            addresses=addr_entries,
+            updated_at=now,
+        )
+
+        if total_count > 200:
+            config_repo = ConfigRepository(db)
+            await config_repo.set(f"hd_address_count:{wallet.id}", str(total_count))
+
+        return summary.balance_btc
 
     async def _get_balance(self, wallet: Wallet) -> Decimal:
         """Get balance from the appropriate client based on network."""

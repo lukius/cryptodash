@@ -7,11 +7,13 @@ import {
   formatBtc,
   formatKas,
   formatUsd,
-  truncateAddress,
+  formatWalletAddress,
 } from "@/utils/format";
 import WalletStatusBadge from "@/components/wallet/WalletStatusBadge.vue";
 import EditTagInput from "@/components/wallet/EditTagInput.vue";
 import CoinIcon from "@/components/common/CoinIcon.vue";
+import HdBadge from "@/components/wallet/HdBadge.vue";
+import DerivedAddressList from "@/components/wallet/DerivedAddressList.vue";
 
 const emit = defineEmits<{
   (e: "add-wallet"): void;
@@ -83,6 +85,13 @@ function formatBalance(wallet: WalletResponse): string {
   return formatKas(wallet.balance);
 }
 
+const expandedWalletId = ref<string | null>(null);
+
+function toggleExpand(walletId: string) {
+  expandedWalletId.value =
+    expandedWalletId.value === walletId ? null : walletId;
+}
+
 function navigateToWallet(wallet: WalletResponse) {
   router.push(`/wallet/${wallet.id}`);
 }
@@ -138,58 +147,108 @@ function navigateToWallet(wallet: WalletResponse) {
               No wallets tracked. Add a wallet to get started.
             </td>
           </tr>
-          <tr
-            v-for="wallet in sortedWallets"
-            :key="wallet.id"
-            @click="navigateToWallet(wallet)"
-          >
-            <td class="tag-cell">
-              <EditTagInput :wallet-id="wallet.id" :tag="wallet.tag" />
-              <WalletStatusBadge :wallet="wallet" />
-            </td>
-            <td>
-              <span
-                :class="[
-                  'network-badge',
-                  wallet.network === 'BTC' ? 'btc' : 'kas',
-                ]"
-              >
-                <CoinIcon :network="wallet.network" :size="14" />
-                {{ wallet.network }}
-              </span>
-            </td>
-            <td class="address" :title="wallet.address">
-              {{ truncateAddress(wallet.address) }}
-            </td>
-            <td class="balance">{{ formatBalance(wallet) }}</td>
-            <td class="usd-val">{{ formatUsd(wallet.balance_usd) }}</td>
-            <td class="actions">
-              <button
-                type="button"
-                class="action-btn"
-                title="Remove wallet"
-                @click.stop="emit('remove-wallet', wallet)"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
+          <template v-for="wallet in sortedWallets" :key="wallet.id">
+            <tr @click="navigateToWallet(wallet)">
+              <td class="tag-cell">
+                <EditTagInput :wallet-id="wallet.id" :tag="wallet.tag" />
+                <HdBadge v-if="wallet.wallet_type === 'hd'" />
+                <WalletStatusBadge :wallet="wallet" />
+              </td>
+              <td>
+                <span
+                  :class="[
+                    'network-badge',
+                    wallet.network === 'BTC' ? 'btc' : 'kas',
+                  ]"
                 >
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6" />
-                  <path d="M14 11v6" />
-                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
-            </td>
-          </tr>
+                  <CoinIcon :network="wallet.network" :size="14" />
+                  {{ wallet.network }}
+                </span>
+              </td>
+              <td class="address" :title="wallet.address">
+                {{ formatWalletAddress(wallet.address, wallet.wallet_type) }}
+              </td>
+              <td class="balance">{{ formatBalance(wallet) }}</td>
+              <td class="usd-val">{{ formatUsd(wallet.balance_usd) }}</td>
+              <td class="actions">
+                <button
+                  v-if="wallet.wallet_type === 'hd'"
+                  type="button"
+                  class="action-btn expand-btn"
+                  :aria-label="
+                    expandedWalletId === wallet.id
+                      ? 'Collapse address list'
+                      : 'Expand address list'
+                  "
+                  :aria-expanded="expandedWalletId === wallet.id"
+                  @click.stop="toggleExpand(wallet.id)"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                    :class="{ 'rotate-180': expandedWalletId === wallet.id }"
+                    class="chevron-icon"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="action-btn"
+                  title="Remove wallet"
+                  @click.stop="emit('remove-wallet', wallet)"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+            <!-- Derived address expand row for HD wallets -->
+            <tr
+              v-if="wallet.wallet_type === 'hd'"
+              :key="wallet.id + '-expand'"
+              class="expand-row"
+              @click.stop
+            >
+              <td colspan="6" class="expand-cell">
+                <Transition name="expand">
+                  <DerivedAddressList
+                    v-if="expandedWalletId === wallet.id"
+                    :addresses="wallet.derived_addresses"
+                    :total-address-count="wallet.derived_address_total"
+                    :loading="wallet.hd_loading"
+                    :error="
+                      !wallet.hd_loading &&
+                      wallet.derived_addresses === null &&
+                      wallet.warning !== null
+                    "
+                  />
+                </Transition>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -359,5 +418,49 @@ function navigateToWallet(wallet: WalletResponse) {
 .action-btn:hover {
   color: var(--red);
   background: var(--red-dim);
+}
+
+.expand-btn {
+  margin-right: 4px;
+}
+
+.expand-btn:hover {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.chevron-icon {
+  transition: transform 0.2s ease;
+}
+
+.chevron-icon.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.expand-row {
+  cursor: default;
+}
+
+.expand-row:hover {
+  background: transparent;
+}
+
+.expand-cell {
+  padding: 0 1.5rem !important;
+}
+
+.expand-enter-active,
+.expand-leave-active {
+  transition:
+    opacity 0.2s ease,
+    max-height 0.25s ease;
+  overflow: hidden;
+  max-height: 600px;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  max-height: 0;
 }
 </style>

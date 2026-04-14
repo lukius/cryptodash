@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from backend.clients.xpub import XpubClient, XpubTransaction
 from backend.database import init_db
 from backend.models.user import User
 from backend.models.wallet import Wallet
@@ -588,3 +589,337 @@ async def test_full_import_kaspa_wallet(session_factory, kas_wallet):
     SOMPI = Decimal("100000000")
     assert Decimal(stored[0].amount) == Decimal(100_000_000_00) / SOMPI
     assert Decimal(stored[1].amount) == Decimal(-50_000_000_00) / SOMPI
+
+
+# ---------------------------------------------------------------------------
+# Helpers for HD wallet tests
+# ---------------------------------------------------------------------------
+
+# A valid-looking 111-char xpub key (does not need real Base58Check for these tests)
+FAKE_XPUB = "xpub" + "A" * 107
+
+
+def make_hd_wallet(user_id: str) -> Wallet:
+    return Wallet(
+        id=str(uuid4()),
+        user_id=user_id,
+        network="BTC",
+        address=FAKE_XPUB,
+        tag="HD Test Wallet",
+        wallet_type="hd",
+        extended_key_type="xpub",
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+def make_xpub_tx(
+    tx_hash: str,
+    amount_sat: int,
+    timestamp: int | None,
+    block_height: int | None = None,
+) -> XpubTransaction:
+    return XpubTransaction(
+        tx_hash=tx_hash,
+        timestamp=timestamp,
+        block_height=block_height,
+        amount_sat=amount_sat,
+    )
+
+
+def make_mock_clients_hd(xpub_txs=None, price_history=None):
+    """Build mock clients + xpub_client for HD wallet tests."""
+    btc_client = AsyncMock()
+    kas_client = AsyncMock()
+    coingecko_client = AsyncMock()
+    ws_manager = AsyncMock()
+    xpub_client = AsyncMock()
+
+    xpub_client.get_xpub_transactions_all = AsyncMock(return_value=xpub_txs or [])
+    xpub_client.get_xpub_transactions_since = AsyncMock(return_value=[])
+    coingecko_client.get_price_history = AsyncMock(
+        return_value=price_history or [(ts(2024, 1, 1) * 1000, Decimal("50000"))]
+    )
+
+    return btc_client, kas_client, coingecko_client, ws_manager, xpub_client
+
+
+@pytest_asyncio.fixture
+async def hd_wallet(db, user):
+    w = make_hd_wallet(user.id)
+    db.add(w)
+    await db.commit()
+    return w
+
+
+# ---------------------------------------------------------------------------
+# test_hd_wallet_history_import
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_history_import(session_factory, hd_wallet):
+    """full_import_hd stores transactions and daily snapshots."""
+    txs = [
+        make_xpub_tx("htx1", 100_000_000, ts(2024, 1, 1), block_height=800_000),
+        make_xpub_tx("htx2", 50_000_000, ts(2024, 1, 2), block_height=800_001),
+        make_xpub_tx("htx3", -30_000_000, ts(2024, 1, 3), block_height=800_002),
+    ]
+    btc_client, kas_client, coingecko_client, ws_manager, xpub_client = (
+        make_mock_clients_hd(xpub_txs=txs)
+    )
+
+    service = HistoryService(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        xpub_client=xpub_client,
+    )
+    result = await service.full_import_hd(hd_wallet)
+
+    assert isinstance(result, HistoryImportResult)
+    assert result.partial is False
+
+    SATOSHI = Decimal("100000000")
+    async with session_factory() as s:
+        tx_repo = TransactionRepository(s)
+        stored = await tx_repo.list_by_wallet(hd_wallet.id)
+
+    assert len(stored) == 3
+    assert Decimal(stored[0].amount) == Decimal(100_000_000) / SATOSHI
+    assert Decimal(stored[1].amount) == Decimal(50_000_000) / SATOSHI
+    assert Decimal(stored[2].amount) == Decimal(-30_000_000) / SATOSHI
+
+    # Running-balance reconstruction (FR-H23)
+    assert Decimal(stored[0].balance_after) == Decimal("1")
+    assert Decimal(stored[1].balance_after) == Decimal("1.5")
+    assert Decimal(stored[2].balance_after) == Decimal("1.2")
+
+    # Daily snapshots exist
+    async with session_factory() as s:
+        snap_repo = BalanceSnapshotRepository(s)
+        snaps = await snap_repo.get_range(
+            hd_wallet.id,
+            datetime(2024, 1, 1, tzinfo=timezone.utc),
+            datetime(2024, 1, 4, tzinfo=timezone.utc),
+        )
+    historical = [sn for sn in snaps if sn.source == "historical"]
+    assert len(historical) == 3
+
+
+# ---------------------------------------------------------------------------
+# test_hd_wallet_history_import_timeout
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_history_import_timeout(session_factory, hd_wallet):
+    """Timeout → partial result returned and wallet:history:completed broadcast sent."""
+
+    async def slow_get_xpub_transactions_all(xpub):
+        await asyncio.sleep(10)
+        return []
+
+    btc_client = AsyncMock()
+    kas_client = AsyncMock()
+    coingecko_client = AsyncMock()
+    coingecko_client.get_price_history = AsyncMock(return_value=[])
+    ws_manager = AsyncMock()
+    xpub_client = AsyncMock()
+    xpub_client.get_xpub_transactions_all = slow_get_xpub_transactions_all
+
+    service = HistoryService(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        xpub_client=xpub_client,
+    )
+    service.IMPORT_TIMEOUT = 0.05  # 50ms
+
+    result = await service.full_import_hd(hd_wallet)
+
+    assert result.partial is True
+
+    broadcast_calls = ws_manager.broadcast.call_args_list
+    partial_calls = [
+        c
+        for c in broadcast_calls
+        if c.args[0] == "wallet:history:completed" and c.args[1].get("partial") is True
+    ]
+    assert len(partial_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# test_hd_wallet_incremental_sync
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_incremental_sync(session_factory, hd_wallet):
+    """incremental_sync_hd fetches only txs after the last known timestamp."""
+    # Seed one transaction via full_import_hd
+    seed_txs = [
+        make_xpub_tx("htx1", 100_000_000, ts(2024, 1, 1), block_height=800_000),
+    ]
+    btc_client, kas_client, coingecko_client, ws_manager, xpub_client = (
+        make_mock_clients_hd(xpub_txs=seed_txs)
+    )
+    service = HistoryService(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        xpub_client=xpub_client,
+    )
+    await service.full_import_hd(hd_wallet)
+
+    # Now simulate incremental sync finding 2 new transactions
+    new_txs = [
+        make_xpub_tx("htx2", 50_000_000, ts(2024, 1, 2), block_height=800_001),
+        make_xpub_tx("htx3", 20_000_000, ts(2024, 1, 3), block_height=800_002),
+    ]
+    xpub_client.get_xpub_transactions_since = AsyncMock(return_value=new_txs)
+
+    count = await service.incremental_sync_hd(hd_wallet)
+
+    assert count == 2
+
+    async with session_factory() as s:
+        tx_repo = TransactionRepository(s)
+        stored = await tx_repo.list_by_wallet(hd_wallet.id)
+
+    assert len(stored) == 3
+
+    SATOSHI = Decimal("100000000")
+    # Running balance should continue from seed tx's balance_after (1.0 BTC)
+    assert Decimal(stored[1].balance_after) == Decimal(150_000_000) / SATOSHI
+    assert Decimal(stored[2].balance_after) == Decimal(170_000_000) / SATOSHI
+
+    # Verify get_xpub_transactions_since was called with the seed tx's timestamp
+    xpub_client.get_xpub_transactions_since.assert_called_once()
+    call_args = xpub_client.get_xpub_transactions_since.call_args
+    assert call_args.args[1] == ts(2024, 1, 1)
+
+    # incremental_sync_hd deliberately creates NO live snapshot — RefreshService
+    # already stores source="live" before calling this method, so none should exist.
+    async with session_factory() as s:
+        snap_repo = BalanceSnapshotRepository(s)
+        all_snaps = await snap_repo.get_range(
+            hd_wallet.id,
+            datetime(2020, 1, 1, tzinfo=timezone.utc),
+            datetime(2030, 1, 1, tzinfo=timezone.utc),
+        )
+    live_snaps = [sn for sn in all_snaps if sn.source == "live"]
+    assert len(live_snaps) == 0
+
+
+# ---------------------------------------------------------------------------
+# test_hd_wallet_incremental_sync_no_history
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_incremental_sync_no_history(session_factory, hd_wallet):
+    """No stored transactions → incremental_sync_hd returns 0 without calling API."""
+    btc_client, kas_client, coingecko_client, ws_manager, xpub_client = (
+        make_mock_clients_hd()
+    )
+
+    service = HistoryService(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        xpub_client=xpub_client,
+    )
+    count = await service.incremental_sync_hd(hd_wallet)
+
+    assert count == 0
+    xpub_client.get_xpub_transactions_since.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# test_hd_wallet_history_skips_unconfirmed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hd_wallet_history_skips_unconfirmed(session_factory, hd_wallet):
+    """Transactions with time=None in the raw API response are excluded from replay.
+
+    Tests the real end-to-end path: raw API response dicts flow through
+    XpubClient._parse_txs, producing XpubTransaction(timestamp=None) for the
+    unconfirmed tx, which the service layer then skips during balance reconstruction.
+    """
+    # Build raw API-style dicts exactly as blockchain.info returns them
+    raw_api_txs = [
+        # Confirmed — oldest
+        {
+            "hash": "htx1",
+            "time": ts(2024, 1, 1),
+            "block_height": 800_000,
+            "result": 100_000_000,
+        },
+        # Unconfirmed — time=None (mempool tx)
+        {
+            "hash": "htx_unconfirmed",
+            "time": None,
+            "block_height": None,
+            "result": 50_000_000,
+        },
+        # Confirmed — newest
+        {
+            "hash": "htx2",
+            "time": ts(2024, 1, 2),
+            "block_height": 800_001,
+            "result": 20_000_000,
+        },
+    ]
+
+    # Parse through the real _parse_txs to produce XpubTransaction objects
+    # (this is what the production XpubClient does internally)
+    parsed_txs = XpubClient._parse_txs(None, raw_api_txs)  # type: ignore[arg-type]
+
+    # The unconfirmed tx must have timestamp=None after parsing
+    unconfirmed = next(t for t in parsed_txs if t.tx_hash == "htx_unconfirmed")
+    assert unconfirmed.timestamp is None
+
+    # Sort oldest-first (XpubClient.get_xpub_transactions_all does this)
+    parsed_txs.sort(key=lambda t: (t.timestamp if t.timestamp is not None else 0))
+
+    btc_client, kas_client, coingecko_client, ws_manager, xpub_client = (
+        make_mock_clients_hd(xpub_txs=parsed_txs)
+    )
+
+    service = HistoryService(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        xpub_client=xpub_client,
+    )
+    result = await service.full_import_hd(hd_wallet)
+
+    assert result.partial is False
+
+    async with session_factory() as s:
+        tx_repo = TransactionRepository(s)
+        stored = await tx_repo.list_by_wallet(hd_wallet.id)
+
+    # Only 2 confirmed transactions stored — unconfirmed one skipped
+    assert len(stored) == 2
+    stored_hashes = {tx.tx_hash for tx in stored}
+    assert "htx_unconfirmed" not in stored_hashes
+    assert "htx1" in stored_hashes
+    assert "htx2" in stored_hashes
+
+    SATOSHI = Decimal("100000000")
+    # Running balance excludes the unconfirmed tx
+    assert Decimal(stored[0].balance_after) == Decimal(100_000_000) / SATOSHI
+    assert Decimal(stored[1].balance_after) == Decimal(120_000_000) / SATOSHI

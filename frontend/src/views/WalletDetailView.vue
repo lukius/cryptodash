@@ -9,6 +9,8 @@ import LoadingSpinner from "@/components/common/LoadingSpinner.vue";
 import WalletBalanceChart from "@/components/widgets/WalletBalanceChart.vue";
 import EditTagInput from "@/components/wallet/EditTagInput.vue";
 import RemoveWalletDialog from "@/components/wallet/RemoveWalletDialog.vue";
+import HdBadge from "@/components/wallet/HdBadge.vue";
+import DerivedAddressList from "@/components/wallet/DerivedAddressList.vue";
 import type { TransactionResponse, WalletResponse } from "@/types/api";
 import {
   formatUsd,
@@ -16,6 +18,7 @@ import {
   formatKas,
   formatTimestamp,
   truncateAddress,
+  formatWalletAddress,
 } from "@/utils/format";
 
 const route = useRoute();
@@ -180,6 +183,7 @@ function onWalletRemoved() {
               <span class="wallet-tag-wrap">
                 <EditTagInput :wallet-id="wallet.id" :tag="wallet.tag" />
               </span>
+              <HdBadge v-if="wallet.wallet_type === 'hd'" />
               <span
                 class="network-badge"
                 :class="wallet.network === 'BTC' ? 'btc' : 'kas'"
@@ -191,7 +195,7 @@ function onWalletRemoved() {
 
             <div class="wallet-address-row">
               <span class="wallet-address" :title="wallet.address">{{
-                truncateAddress(wallet.address, 12, 8)
+                formatWalletAddress(wallet.address, wallet.wallet_type)
               }}</span>
               <button
                 class="copy-btn"
@@ -287,6 +291,28 @@ function onWalletRemoved() {
           :network="wallet.network"
           :show-unit-toggle="true"
         />
+
+        <!-- Derived address list (HD wallets only, always expanded on detail page) -->
+        <div
+          v-if="wallet.wallet_type === 'hd'"
+          class="card derived-addresses-card"
+        >
+          <div class="card-header">
+            <h3>Derived Addresses</h3>
+          </div>
+          <div class="derived-addresses-body">
+            <DerivedAddressList
+              :addresses="wallet.derived_addresses"
+              :total-address-count="wallet.derived_address_total"
+              :loading="wallet.hd_loading"
+              :error="
+                !wallet.hd_loading &&
+                wallet.derived_addresses === null &&
+                wallet.warning !== null
+              "
+            />
+          </div>
+        </div>
 
         <!-- Transaction timeline -->
         <div class="card tx-card">
@@ -618,6 +644,15 @@ function onWalletRemoved() {
 .tx-card {
   padding: 0;
   overflow: hidden;
+}
+
+.derived-addresses-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.derived-addresses-body {
+  padding: 1rem 1.5rem;
 }
 
 .card-header {

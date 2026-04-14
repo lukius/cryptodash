@@ -6,6 +6,7 @@ import {
   formatPercent,
   formatTimestamp,
   truncateAddress,
+  formatWalletAddress,
 } from '@/utils/format'
 
 describe('formatUsd', () => {
@@ -109,5 +110,66 @@ describe('truncateAddress', () => {
     const addr = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'
     const result = truncateAddress(addr)
     expect(result).toBe('bc1qar...5mdq')
+  })
+})
+
+describe('formatWalletAddress', () => {
+  it('truncates an HD wallet extended key: first 10 + "..." + last 6', () => {
+    // 111-char xpub key: first 10 = "xpub123456", last 6 = "d4e7f2"
+    const xpub = 'xpub123456' + 'A'.repeat(95) + 'd4e7f2'
+    expect(formatWalletAddress(xpub, 'hd')).toBe('xpub123456...d4e7f2')
+  })
+
+  it('truncates a real-looking 111-char xpub to first 10 + "..." + last 6', () => {
+    // Use acceptance criteria example shape
+    const xpub = 'xpub6CUGRo' + 'B'.repeat(95) + 'd4e7f2'
+    expect(formatWalletAddress(xpub, 'hd')).toBe('xpub6CUGRo...d4e7f2')
+  })
+
+  it('returns address unchanged for HD wallet if <= 16 chars', () => {
+    expect(formatWalletAddress('xpub1234567890', 'hd')).toBe('xpub1234567890')
+  })
+
+  it('truncates an individual address: first 8 + "..." + last 6', () => {
+    // 42-char bc1q address; last 6 chars: "hx0wlh"
+    const addr = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'
+    expect(formatWalletAddress(addr, 'individual')).toBe('bc1qxy2k...hx0wlh')
+  })
+
+  it('returns address unchanged for individual if <= 14 chars', () => {
+    expect(formatWalletAddress('bc1qshort', 'individual')).toBe('bc1qshort')
+  })
+
+  it('truncates a 34-char P2PKH address for individual wallets', () => {
+    // first 8: "1A1zP1eP", last 6: "ivf0S" — wait, 35 chars
+    // 1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf0S = 35 chars
+    // last 6: "vf0S" + 2 more = "ivf0S" hmm — let's count: last 6 = "Divf0S"
+    const addr = '1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf0S'
+    expect(formatWalletAddress(addr, 'individual')).toBe('1A1zP1eP...Divf0S')
+  })
+
+  it('does not truncate a 16-char HD input (exact upper boundary — no truncation)', () => {
+    // 16 chars: threshold is > 16 to truncate, so 16 chars → unchanged
+    const key = 'xpub123456789012'
+    expect(formatWalletAddress(key, 'hd')).toBe('xpub123456789012')
+  })
+
+  it('truncates a 17-char HD input (one over boundary)', () => {
+    // 17 chars: first 10 + "..." + last 6
+    const key = 'xpub1234567890123'
+    expect(formatWalletAddress(key, 'hd')).toBe('xpub123456...890123')
+  })
+
+  it('does not truncate a 14-char individual input (exact upper boundary — no truncation)', () => {
+    // 14 chars: threshold is > 14 to truncate, so 14 chars → unchanged
+    const addr = 'bc1qabcdefghij'
+    expect(formatWalletAddress(addr, 'individual')).toBe('bc1qabcdefghij')
+  })
+
+  it('truncates a 15-char individual input (one over boundary)', () => {
+    // 15 chars: first 8 + "..." + last 6
+    // "bc1qabcdefghijk" → first 8 = "bc1qabcd", last 6 = "fghijk"
+    const addr = 'bc1qabcdefghijk'
+    expect(formatWalletAddress(addr, 'individual')).toBe('bc1qabcd...fghijk')
   })
 })

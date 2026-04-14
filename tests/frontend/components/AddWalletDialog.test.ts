@@ -294,6 +294,112 @@ describe("AddWalletDialog", () => {
     expect(wrapper.text()).toContain("Invalid Kaspa address format");
   });
 
+  // ---- HD wallet detection ----
+
+  it("shows Trezor helper text when network is BTC", () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    expect(wrapper.text()).toContain("Find your extended public key in Trezor Suite");
+  });
+
+  it("does not show Trezor helper text when network is KAS", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const kasBtn = wrapper.findAll("button").find((b) =>
+      b.text().toLowerCase().includes("kaspa"),
+    );
+    await kasBtn!.trigger("click");
+    expect(wrapper.text()).not.toContain("Find your extended public key in Trezor Suite");
+  });
+
+  it("BTC address input has combined placeholder text when BTC is selected", () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    const placeholder = (addressInput.element as HTMLTextAreaElement).placeholder;
+    expect(placeholder).toContain("xpub");
+  });
+
+  it("changes label to 'Extended public key' after xpub is pasted", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    await addressInput.setValue("xpub6CUGRUBf5RVvPHfD4ADzFLmVRSG41jFjfFbM7EkFGH1234567890abcdef");
+    await addressInput.trigger("paste");
+    expect(wrapper.text()).toContain("Extended public key");
+  });
+
+  it("changes label to 'Extended public key' after ypub is pasted", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    await addressInput.setValue("ypub6CUGRUBf5RVvPHfD4ADzFLmVRSG41jFjfFbM7EkFGH1234567890abcdef");
+    await addressInput.trigger("paste");
+    expect(wrapper.text()).toContain("Extended public key");
+  });
+
+  it("changes label to 'Extended public key' after zpub is pasted", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    await addressInput.setValue("zpub6CUGRUBf5RVvPHfD4ADzFLmVRSG41jFjfFbM7EkFGH1234567890abcdef");
+    await addressInput.trigger("paste");
+    expect(wrapper.text()).toContain("Extended public key");
+  });
+
+  it("keeps default label 'Wallet address' while user is typing (no paste/blur)", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    // Simulate typing character by character — only @input, no @paste or @blur
+    await addressInput.setValue("xpub6CUGRUBf5");
+    await addressInput.trigger("input");
+    expect(wrapper.text()).toContain("Wallet address");
+    expect(wrapper.text()).not.toContain("Extended public key");
+  });
+
+  it("changes label to 'Extended public key' after xpub is blurred (blur also commits)", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    await addressInput.setValue("xpub6CUGRUBf5RVvPHfD4ADzFLmVRSG41jFjfFbM7EkFGH1234567890abcdef");
+    await addressInput.trigger("blur");
+    expect(wrapper.text()).toContain("Extended public key");
+  });
+
+  it("keeps default label 'Wallet address' for a regular BTC address after paste", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    await addressInput.setValue("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+    await addressInput.trigger("paste");
+    expect(wrapper.text()).toContain("Wallet address");
+    expect(wrapper.text()).not.toContain("Extended public key");
+  });
+
+  // ---- HD wallet submission (regression: Issue 1) ----
+
+  it("submits xpub key without client-side validation error", async () => {
+    const hdWallet = makeWallet({
+      address: "xpub6CUGRUBf5RVvPHfD4ADzFLmVRSG41jFjfFbM7EkFGH12345678901abcde",
+      tag: "BTC HD Wallet #1",
+      wallet_type: "hd",
+    });
+    const store = useWalletsStore();
+    const addWalletSpy = vi.spyOn(store, "addWallet").mockResolvedValue(hdWallet);
+
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    await addressInput.setValue("xpub6CUGRUBf5RVvPHfD4ADzFLmVRSG41jFjfFbM7EkFGH12345678901abcde");
+
+    const submitBtn = wrapper.findAll("button").find((b) =>
+      b.text().toLowerCase().includes("add"),
+    );
+    await submitBtn!.trigger("click");
+    await flushPromises();
+
+    // Must reach store.addWallet — no client-side block
+    expect(addWalletSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        network: "BTC",
+        address: "xpub6CUGRUBf5RVvPHfD4ADzFLmVRSG41jFjfFbM7EkFGH12345678901abcde",
+      }),
+    );
+    // No client-side validation error visible
+    expect(wrapper.text()).not.toContain("Invalid Bitcoin address format.");
+  });
+
   // ---- Wallet limit ----
 
   it("shows limit message and disables submit when isLimitReached", () => {

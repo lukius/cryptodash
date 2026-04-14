@@ -54,3 +54,19 @@ export function truncateAddress(addr: string, start = 6, end = 4): string {
   if (addr.length <= start + end) return addr;
   return `${addr.slice(0, start)}...${addr.slice(-end)}`;
 }
+
+export function formatWalletAddress(
+  address: string,
+  walletType: "individual" | "hd",
+): string {
+  if (walletType === "hd") {
+    // First 10 chars + "..." + last 6 chars (FR-H09)
+    return address.length > 16
+      ? `${address.slice(0, 10)}...${address.slice(-6)}`
+      : address;
+  }
+  // Individual address: first 8 + "..." + last 6
+  return address.length > 14
+    ? `${address.slice(0, 8)}...${address.slice(-6)}`
+    : address;
+}

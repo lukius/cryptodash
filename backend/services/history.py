@@ -16,6 +16,7 @@ from backend.repositories.snapshot import (
     PriceSnapshotRepository,
 )
 from backend.repositories.transaction import TransactionRepository
+from backend.services.wallet import normalize_to_xpub
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +41,14 @@ class HistoryService:
         kas_client,
         coingecko_client,
         ws_manager,
+        xpub_client=None,
     ) -> None:
         self._session_factory = session_factory
         self.btc_client = btc_client
         self.kas_client = kas_client
         self.coingecko_client = coingecko_client
         self.ws_manager = ws_manager
+        self.xpub_client = xpub_client
 
     # ------------------------------------------------------------------
     # Public API
@@ -83,6 +86,48 @@ class HistoryService:
         async with self._session_factory() as db:
             return await self._incremental_sync_with_db(db, wallet)
 
+    async def full_import_hd(self, wallet: Wallet) -> HistoryImportResult:
+        """One-time full transaction history import for a newly added HD wallet.
+
+        Fetches all transactions at the xpub aggregate level via XpubClient.
+        Stores Transaction records and historical BalanceSnapshot records.
+        Wrapped in a timeout; returns partial=True if the timeout fires.
+        """
+        if self.xpub_client is None:
+            raise RuntimeError("xpub_client is required for HD wallet operations")
+        try:
+            result = await asyncio.wait_for(
+                self._do_full_import_hd(wallet),
+                timeout=self.IMPORT_TIMEOUT,
+            )
+            return result
+        except asyncio.TimeoutError:
+            logger.warning(
+                "HD wallet history import timed out for %s. Partial data stored.",
+                wallet.tag,
+            )
+            msg = "Import timed out. Incremental syncs will pick up remaining data."
+            await self.ws_manager.broadcast(
+                "wallet:history:completed",
+                {
+                    "wallet_id": wallet.id,
+                    "partial": True,
+                    "message": msg,
+                },
+            )
+            return HistoryImportResult(partial=True, message=msg)
+
+    async def incremental_sync_hd(self, wallet: Wallet) -> int:
+        """Fetch only new transactions for an HD wallet since the last stored one.
+
+        Returns the count of new transactions stored.
+        If no stored transactions exist, defers to full_import_hd and returns 0.
+        """
+        if self.xpub_client is None:
+            raise RuntimeError("xpub_client is required for HD wallet operations")
+        async with self._session_factory() as db:
+            return await self._incremental_sync_hd_with_db(db, wallet)
+
     async def fetch_price_history(self, network: str, days: int) -> int:
         """Fetch historical prices from CoinGecko and store as PriceSnapshots.
         Returns count of price snapshots created."""
@@ -105,7 +150,6 @@ class HistoryService:
     ) -> HistoryImportResult:
         """Session-scoped full import logic."""
         tx_repo = TransactionRepository(db)
-        snap_repo = BalanceSnapshotRepository(db)
 
         await self.ws_manager.broadcast(
             "wallet:history:progress",
@@ -149,17 +193,13 @@ class HistoryService:
             tx_records.append(tx)
 
         # Batch-insert transactions
-        await tx_repo.bulk_create(tx_records)
+        await self._batch_insert_transactions(db, tx_records)
 
         # Compute daily end-of-day balances and store as BalanceSnapshot(source="historical").
-        # Delete any pre-existing historical snapshots first to avoid duplicates on re-runs.
-        await snap_repo.delete_historical_for_wallet(wallet.id)
-        all_stored = await tx_repo.list_by_wallet(wallet.id)
-        daily_snapshots = _compute_daily_snapshots(wallet.id, all_stored)
-        await snap_repo.bulk_create(daily_snapshots)
+        await self._store_daily_snapshots(db, wallet.id)
 
-        # Fetch historical prices (up to 365 days) — reuse the current session
-        await self._fetch_price_history_with_db(db, wallet.network, 365)
+        # Fetch historical prices (up to 365 days)
+        await self._fetch_and_store_historical_prices(db, wallet.network, 365)
 
         # Broadcast completion
         await self.ws_manager.broadcast(
@@ -168,6 +208,33 @@ class HistoryService:
         )
 
         return HistoryImportResult(partial=False, tx_count=len(tx_records))
+
+    async def _batch_insert_transactions(
+        self, db: AsyncSession, tx_records: list[Transaction]
+    ) -> None:
+        """Batch-insert transaction records, ignoring duplicates (OR IGNORE)."""
+        tx_repo = TransactionRepository(db)
+        await tx_repo.bulk_create(tx_records)
+
+    async def _store_daily_snapshots(self, db: AsyncSession, wallet_id: str) -> None:
+        """Delete existing historical snapshots and recompute from all stored txs.
+
+        Emits one BalanceSnapshot(source="historical") per UTC calendar day,
+        representing the end-of-day balance after all that day's transactions.
+        """
+        tx_repo = TransactionRepository(db)
+        snap_repo = BalanceSnapshotRepository(db)
+        await snap_repo.delete_historical_for_wallet(wallet_id)
+        all_stored = await tx_repo.list_by_wallet(wallet_id)
+        daily_snapshots = _compute_daily_snapshots(wallet_id, all_stored)
+        await snap_repo.bulk_create(daily_snapshots)
+
+    async def _fetch_and_store_historical_prices(
+        self, db: AsyncSession, network: str, days: int
+    ) -> int:
+        """Fetch historical prices from CoinGecko and store as PriceSnapshots.
+        Returns count of price snapshots created."""
+        return await self._fetch_price_history_with_db(db, network, days)
 
     async def _fetch_price_history_with_db(
         self, db: AsyncSession, network: str, days: int
@@ -245,6 +312,118 @@ class HistoryService:
         await db.commit()
 
         return len(new_tx_records)
+
+    async def _do_full_import_hd(self, wallet: Wallet) -> HistoryImportResult:
+        """Session-scoped full import logic for HD wallets.
+
+        Reuses shared helpers (_batch_insert_transactions, _store_daily_snapshots,
+        _fetch_and_store_historical_prices) in the same way as _do_full_import_with_db.
+        """
+        async with self._session_factory() as db:
+            await self.ws_manager.broadcast(
+                "wallet:history:progress",
+                {"wallet_id": wallet.id, "status": "started"},
+            )
+
+            xpub = normalize_to_xpub(wallet.address)
+            all_txs = await self.xpub_client.get_xpub_transactions_all(xpub)
+
+            # Replay oldest-first; skip unconfirmed — only confirmed txs used
+            # for balance reconstruction.
+            running_balance = Decimal("0")
+            now = datetime.now(timezone.utc)
+            tx_records: list[Transaction] = []
+
+            for tx in all_txs:  # already sorted oldest-first by XpubClient
+                if tx.timestamp is None:
+                    # skip unconfirmed — only confirmed txs used for balance reconstruction
+                    continue
+
+                amount_btc = Decimal(tx.amount_sat) / SATOSHI
+                running_balance += amount_btc
+                tx_records.append(
+                    Transaction(
+                        id=str(uuid4()),
+                        wallet_id=wallet.id,
+                        tx_hash=tx.tx_hash,
+                        amount=str(amount_btc),
+                        balance_after=str(running_balance),
+                        block_height=tx.block_height,
+                        timestamp=datetime.fromtimestamp(tx.timestamp, tz=timezone.utc),
+                        created_at=now,
+                    )
+                )
+
+            # Reuse shared helpers — same logic as individual wallet import
+            await self._batch_insert_transactions(db, tx_records)
+            await self._store_daily_snapshots(db, wallet.id)
+            await self._fetch_and_store_historical_prices(db, "BTC", 365)
+
+            await self.ws_manager.broadcast(
+                "wallet:history:completed",
+                {"wallet_id": wallet.id, "partial": False},
+            )
+            await db.commit()
+
+            return HistoryImportResult(partial=False, tx_count=len(tx_records))
+
+    async def _incremental_sync_hd_with_db(
+        self, db: AsyncSession, wallet: Wallet
+    ) -> int:
+        """Session-scoped incremental sync logic for HD wallets.
+
+        No live BalanceSnapshot is created here. RefreshService._get_hd_balance
+        already stores a source="live" snapshot before calling incremental_sync_hd,
+        so creating another one here would duplicate it.
+        """
+        tx_repo = TransactionRepository(db)
+
+        # Find the most recent stored transaction
+        last_tx = await tx_repo.get_latest_for_wallet(wallet.id)
+        if last_tx is None:
+            # No stored transactions — full_import_hd handles the initial load
+            return 0
+
+        # Treat the stored timestamp as UTC (SQLite stores naive datetimes)
+        ts_dt = last_tx.timestamp
+        if ts_dt.tzinfo is None:
+            ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+        after_ts = int(ts_dt.timestamp())
+        xpub = normalize_to_xpub(wallet.address)
+        new_txs = await self.xpub_client.get_xpub_transactions_since(xpub, after_ts)
+
+        if not new_txs:
+            return 0
+
+        running_balance = Decimal(last_tx.balance_after or "0")
+        now = datetime.now(timezone.utc)
+        records: list[Transaction] = []
+
+        for tx in new_txs:  # sorted oldest-first by XpubClient
+            if tx.timestamp is None:
+                # skip unconfirmed — only confirmed txs used for balance reconstruction
+                continue
+
+            amount_btc = Decimal(tx.amount_sat) / SATOSHI
+            running_balance += amount_btc
+            records.append(
+                Transaction(
+                    id=str(uuid4()),
+                    wallet_id=wallet.id,
+                    tx_hash=tx.tx_hash,
+                    amount=str(amount_btc),
+                    balance_after=str(running_balance),
+                    block_height=tx.block_height,
+                    timestamp=datetime.fromtimestamp(tx.timestamp, tz=timezone.utc),
+                    created_at=now,
+                )
+            )
+
+        # OR IGNORE handles any duplicates gracefully
+        await self._batch_insert_transactions(db, records)
+        await db.commit()
+
+        return len(records)
 
     async def _fetch_raw_transactions(self, wallet: Wallet) -> list[dict]:
         """Fetch all transactions from the appropriate client and normalize.

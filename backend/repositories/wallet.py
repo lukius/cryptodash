@@ -59,6 +59,25 @@ class WalletRepository:
         )
         return result.scalar_one() > 0
 
+    async def exists_by_address_exact(
+        self, user_id: str, network: str, address: str
+    ) -> bool:
+        """Case-sensitive exact-match duplicate check.
+
+        Used for HD wallet keys (FR-H06: comparison is exact-match, case-sensitive).
+        Individual BTC addresses use the case-insensitive `exists_by_address` instead.
+        """
+        result = await self.db.execute(
+            select(func.count())
+            .select_from(Wallet)
+            .where(
+                Wallet.user_id == user_id,
+                Wallet.network == network,
+                Wallet.address == address,
+            )
+        )
+        return result.scalar_one() > 0
+
     async def tag_exists(
         self,
         user_id: str,

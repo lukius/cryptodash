@@ -1,4 +1,4 @@
-"""Tests for RefreshService (T09 ST7)."""
+"""Tests for RefreshService (T09 ST7, T21)."""
 
 import asyncio
 from datetime import datetime, timezone
@@ -10,9 +10,14 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from backend.clients.xpub import DerivedAddressData, XpubSummary
 from backend.database import init_db
 from backend.models.user import User
 from backend.models.wallet import Wallet
+
+# A valid-looking xpub key (111 chars) used in HD wallet fixtures.
+# Does NOT pass Base58Check — validation is performed in WalletService, not here.
+_FAKE_XPUB = "xpub" + "A" * 107  # 4 + 107 = 111 chars
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +85,39 @@ def kas_wallet(test_user):
     )
 
 
+@pytest_asyncio.fixture
+def hd_wallet(test_user):
+    return Wallet(
+        id=str(uuid4()),
+        user_id=test_user.id,
+        network="BTC",
+        address=_FAKE_XPUB,
+        tag="BTC HD Wallet #1",
+        wallet_type="hd",
+        extended_key_type="xpub",
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+def _make_xpub_summary(
+    balance_sat: int = 100_000_000,
+    n_tx: int = 5,
+    derived: list[DerivedAddressData] | None = None,
+) -> XpubSummary:
+    """Build an XpubSummary for use in mocks."""
+    if derived is None:
+        derived = [
+            DerivedAddressData(address="bc1qaddr1", balance_sat=60_000_000, n_tx=3),
+            DerivedAddressData(address="bc1qaddr2", balance_sat=40_000_000, n_tx=2),
+        ]
+    return XpubSummary(
+        balance_sat=balance_sat,
+        balance_btc=Decimal(balance_sat) / Decimal("100000000"),
+        n_tx=n_tx,
+        derived_addresses=derived,
+    )
+
+
 def make_mock_clients():
     btc_client = AsyncMock()
     btc_client.get_balance = AsyncMock(return_value=Decimal("0.5"))
@@ -98,8 +136,19 @@ def make_mock_clients():
 
     history_service = AsyncMock()
     history_service.incremental_sync = AsyncMock(return_value=0)
+    history_service.incremental_sync_hd = AsyncMock(return_value=0)
 
-    return btc_client, kas_client, coingecko_client, ws_manager, history_service
+    xpub_client = AsyncMock()
+    xpub_client.get_xpub_summary = AsyncMock(return_value=_make_xpub_summary())
+
+    return (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
 
 
 def make_refresh_service(
@@ -109,6 +158,7 @@ def make_refresh_service(
     coingecko_client,
     ws_manager,
     history_service,
+    xpub_client=None,
 ):
     from backend.services.refresh import RefreshService
 
@@ -119,11 +169,12 @@ def make_refresh_service(
         coingecko_client=coingecko_client,
         ws_manager=ws_manager,
         history_service=history_service,
+        xpub_client=xpub_client,
     )
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Tests (original T09)
 # ---------------------------------------------------------------------------
 
 
@@ -136,9 +187,14 @@ async def test_full_refresh_fetches_balances_and_prices(
     db_session.add(kas_wallet)
     await db_session.commit()
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     service = make_refresh_service(
         session_factory,
         btc_client,
@@ -146,6 +202,7 @@ async def test_full_refresh_fetches_balances_and_prices(
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
 
     result = await service.run_full_refresh()
@@ -172,9 +229,14 @@ async def test_full_refresh_stores_balance_snapshots(
     db_session.add(btc_wallet)
     await db_session.commit()
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     service = make_refresh_service(
         session_factory,
         btc_client,
@@ -182,6 +244,7 @@ async def test_full_refresh_stores_balance_snapshots(
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
 
     await service.run_full_refresh()
@@ -207,9 +270,14 @@ async def test_full_refresh_partial_failure(
     db_session.add(kas_wallet)
     await db_session.commit()
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     # Make BTC balance fetch fail
     btc_client.get_balance = AsyncMock(side_effect=Exception("BTC API down"))
 
@@ -220,6 +288,7 @@ async def test_full_refresh_partial_failure(
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
     result = await service.run_full_refresh()
 
@@ -232,9 +301,14 @@ async def test_full_refresh_partial_failure(
 @pytest.mark.asyncio
 async def test_concurrent_refresh_skipped(session_factory):
     """A second run_full_refresh call while the first is running must return skipped=True."""
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
 
     service = make_refresh_service(
         session_factory,
@@ -243,6 +317,7 @@ async def test_concurrent_refresh_skipped(session_factory):
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
 
     # Manually acquire the lock to simulate a running refresh
@@ -264,9 +339,14 @@ async def test_concurrent_refresh_truly_skipped(
     db_session.add(btc_wallet)
     await db_session.commit()
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     service = make_refresh_service(
         session_factory,
         btc_client,
@@ -274,6 +354,7 @@ async def test_concurrent_refresh_truly_skipped(
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
 
     results = await asyncio.gather(
@@ -297,9 +378,14 @@ async def test_refresh_price_fallback_to_kaspa(session_factory, db_session, kas_
     db_session.add(kas_wallet)
     await db_session.commit()
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     coingecko_client.get_current_prices = AsyncMock(
         side_effect=Exception("CoinGecko down")
     )
@@ -312,6 +398,7 @@ async def test_refresh_price_fallback_to_kaspa(session_factory, db_session, kas_
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
     result = await service.run_full_refresh()
 
@@ -338,9 +425,14 @@ async def test_refresh_zero_price_discarded(session_factory):
 
     from backend.models.price_snapshot import PriceSnapshot
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     # Return 0 for BTC (should be discarded)
     coingecko_client.get_current_prices = AsyncMock(
         return_value={"BTC": Decimal("0"), "KAS": Decimal("0.05")}
@@ -353,6 +445,7 @@ async def test_refresh_zero_price_discarded(session_factory):
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
     await service.run_full_refresh()
 
@@ -369,9 +462,14 @@ async def test_refresh_zero_price_discarded(session_factory):
 @pytest.mark.asyncio
 async def test_refresh_broadcasts_events(session_factory):
     """Full refresh should broadcast refresh:started and refresh:completed events."""
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
 
     service = make_refresh_service(
         session_factory,
@@ -380,6 +478,7 @@ async def test_refresh_broadcasts_events(session_factory):
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
     await service.run_full_refresh()
 
@@ -395,9 +494,14 @@ async def test_refresh_single_wallet_no_lock(session_factory, db_session, btc_wa
     db_session.add(btc_wallet)
     await db_session.commit()
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     service = make_refresh_service(
         session_factory,
         btc_client,
@@ -405,6 +509,7 @@ async def test_refresh_single_wallet_no_lock(session_factory, db_session, btc_wa
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
 
     # Verify it works even when the lock is already held
@@ -425,9 +530,14 @@ async def test_refresh_single_wallet_failure_returns_none(
     db_session.add(btc_wallet)
     await db_session.commit()
 
-    btc_client, kas_client, coingecko_client, ws_manager, history_service = (
-        make_mock_clients()
-    )
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
     btc_client.get_balance = AsyncMock(side_effect=Exception("API error"))
 
     service = make_refresh_service(
@@ -437,6 +547,279 @@ async def test_refresh_single_wallet_failure_returns_none(
         coingecko_client,
         ws_manager,
         history_service,
+        xpub_client,
     )
     snapshot = await service.refresh_single_wallet(btc_wallet)
     assert snapshot is None
+
+
+# ---------------------------------------------------------------------------
+# T21: HD wallet refresh tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_single_hd_wallet_success(session_factory, db_session, hd_wallet):
+    """refresh_single_hd_wallet should store a BalanceSnapshot and replace derived
+    addresses when XpubClient returns a summary successfully.
+    """
+    from sqlalchemy import select
+
+    from backend.models.balance_snapshot import BalanceSnapshot
+    from backend.models.derived_address import DerivedAddress
+
+    db_session.add(hd_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    summary = _make_xpub_summary(
+        balance_sat=150_000_000,
+        n_tx=7,
+        derived=[
+            DerivedAddressData(address="bc1qfoo", balance_sat=90_000_000, n_tx=4),
+            DerivedAddressData(address="bc1qbar", balance_sat=60_000_000, n_tx=3),
+        ],
+    )
+    xpub_client.get_xpub_summary = AsyncMock(return_value=summary)
+
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+
+    snapshot = await service.refresh_single_hd_wallet(hd_wallet)
+
+    assert snapshot is not None
+    assert snapshot.source == "live"
+    assert Decimal(snapshot.balance) == Decimal("1.5")  # 150_000_000 sat = 1.5 BTC
+
+    # Derived addresses and snapshot should be persisted
+    async with session_factory() as s:
+        snap_result = await s.execute(
+            select(BalanceSnapshot).where(BalanceSnapshot.wallet_id == hd_wallet.id)
+        )
+        snaps = snap_result.scalars().all()
+
+        da_result = await s.execute(
+            select(DerivedAddress).where(DerivedAddress.wallet_id == hd_wallet.id)
+        )
+        derived = da_result.scalars().all()
+
+    assert len(snaps) >= 1
+    assert Decimal(snaps[-1].balance) == Decimal("1.5")
+    assert len(derived) == 2
+    addresses = {d.address for d in derived}
+    assert "bc1qfoo" in addresses
+    assert "bc1qbar" in addresses
+
+
+@pytest.mark.asyncio
+async def test_refresh_single_hd_wallet_api_failure(
+    session_factory, db_session, hd_wallet
+):
+    """refresh_single_hd_wallet should return None and store no snapshot when the
+    XpubClient raises an exception (FR-H21).
+    """
+    from sqlalchemy import select
+
+    from backend.models.balance_snapshot import BalanceSnapshot
+
+    db_session.add(hd_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    xpub_client.get_xpub_summary = AsyncMock(
+        side_effect=Exception("blockchain.info unavailable")
+    )
+
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+
+    snapshot = await service.refresh_single_hd_wallet(hd_wallet)
+
+    assert snapshot is None
+
+    # No snapshot should be stored
+    async with session_factory() as s:
+        result = await s.execute(
+            select(BalanceSnapshot).where(BalanceSnapshot.wallet_id == hd_wallet.id)
+        )
+        snaps = result.scalars().all()
+    assert len(snaps) == 0
+
+
+@pytest.mark.asyncio
+async def test_refresh_full_cycle_includes_hd_wallets(
+    session_factory, db_session, btc_wallet, hd_wallet
+):
+    """HD wallets must be included in the same refresh cycle as individual wallets
+    (FR-H20): both succeed, both count toward success_count.
+    """
+    db_session.add(btc_wallet)
+    db_session.add(hd_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+
+    result = await service.run_full_refresh()
+
+    assert result.skipped is False
+    assert result.success_count == 2
+    assert result.failure_count == 0
+
+    # XpubClient.get_xpub_summary should have been called for the HD wallet
+    xpub_client.get_xpub_summary.assert_awaited_once()
+    # BtcClient.get_balance should have been called for the individual BTC wallet
+    btc_client.get_balance.assert_awaited_once()
+    # incremental_sync_hd must be dispatched for the HD wallet (not incremental_sync).
+    # The wallet instance comes from wallet_repo.get_all() inside the refresh loop, so
+    # it is a different Python object than the fixture — match by wallet id instead.
+    history_service.incremental_sync_hd.assert_awaited_once()
+    (called_wallet,) = history_service.incremental_sync_hd.await_args.args
+    assert called_wallet.id == hd_wallet.id
+
+
+@pytest.mark.asyncio
+async def test_refresh_hd_wallet_over_200_addresses(
+    session_factory, db_session, hd_wallet
+):
+    """When total derived addresses > 200, the hd_address_count config key must be
+    written (FR-H15 / TECH_SPEC §4.8.a).
+    """
+    from sqlalchemy import select
+
+    from backend.models.configuration import Configuration
+
+    db_session.add(hd_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+
+    # Build a summary with 205 derived addresses
+    many_derived = [
+        DerivedAddressData(
+            address=f"bc1qaddr{i:04d}", balance_sat=1000 * (205 - i), n_tx=1
+        )
+        for i in range(205)
+    ]
+    summary = _make_xpub_summary(
+        balance_sat=sum(a.balance_sat for a in many_derived),
+        n_tx=205,
+        derived=many_derived,
+    )
+    xpub_client.get_xpub_summary = AsyncMock(return_value=summary)
+
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+
+    snapshot = await service.refresh_single_hd_wallet(hd_wallet)
+    assert snapshot is not None
+
+    # Config key "hd_address_count:{wallet_id}" must be set to "205"
+    async with session_factory() as s:
+        result = await s.execute(
+            select(Configuration).where(
+                Configuration.key == f"hd_address_count:{hd_wallet.id}"
+            )
+        )
+        config_row = result.scalar_one_or_none()
+
+    assert config_row is not None
+    assert config_row.value == "205"
+
+
+@pytest.mark.asyncio
+async def test_refresh_full_cycle_hd_wallet_failure_counted(
+    session_factory, db_session, btc_wallet, hd_wallet
+):
+    """When the HD wallet fetch fails in a full cycle, failure_count is incremented
+    and the individual wallet still succeeds (FR-H21 — identical failure handling).
+    """
+    db_session.add(btc_wallet)
+    db_session.add(hd_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    xpub_client.get_xpub_summary = AsyncMock(
+        side_effect=Exception("HD wallet API error")
+    )
+
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+
+    result = await service.run_full_refresh()
+
+    assert result.skipped is False
+    assert result.success_count == 1  # individual BTC wallet
+    assert result.failure_count == 1  # HD wallet
+    assert len(result.errors) == 1
