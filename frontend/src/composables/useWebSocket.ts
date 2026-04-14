@@ -5,6 +5,7 @@ import { useDashboardStore } from "@/stores/dashboard";
 import { useWalletsStore } from "@/stores/wallets";
 import { useSettingsStore } from "@/stores/settings";
 import type { WebSocketEvent } from "@/types/websocket";
+import type { WalletResponse } from "@/types/api";
 
 const PING_INTERVAL_MS = 30_000;
 const INITIAL_BACKOFF_MS = 1_000;
@@ -65,7 +66,7 @@ function dispatchEvent(event: WebSocketEvent) {
       if (idx !== -1) {
         wallets.wallets[idx] = {
           ...wallets.wallets[idx],
-          history_status: event.data.status,
+          history_status: event.data.status as WalletResponse["history_status"],
         };
       }
       break;
