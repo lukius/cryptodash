@@ -16,8 +16,6 @@ from backend.repositories.snapshot import (
     PriceSnapshotRepository,
 )
 from backend.repositories.transaction import TransactionRepository
-from backend.services.wallet import normalize_to_xpub
-
 logger = logging.getLogger(__name__)
 
 SATOSHI = Decimal("100000000")
@@ -325,8 +323,21 @@ class HistoryService:
                 {"wallet_id": wallet.id, "status": "started"},
             )
 
-            xpub = normalize_to_xpub(wallet.address)
-            all_txs = await self.xpub_client.get_xpub_transactions_all(xpub)
+            # Use pre-stored derived addresses when available to avoid a
+            # redundant gap-limit scan (refresh_single_hd_wallet already ran).
+            from backend.repositories.derived_address import DerivedAddressRepository
+
+            derived_repo = DerivedAddressRepository(db)
+            da_rows = await derived_repo.get_by_wallet(wallet.id)
+            if da_rows:
+                wallet_addr_set = {row.address for row in da_rows}
+                all_txs = await self.xpub_client.get_transactions_for_addresses(
+                    wallet_addr_set
+                )
+            else:
+                all_txs = await self.xpub_client.get_xpub_transactions_all(
+                    wallet.address
+                )
 
             # Replay oldest-first; skip unconfirmed — only confirmed txs used
             # for balance reconstruction.
@@ -389,8 +400,7 @@ class HistoryService:
         if ts_dt.tzinfo is None:
             ts_dt = ts_dt.replace(tzinfo=timezone.utc)
         after_ts = int(ts_dt.timestamp())
-        xpub = normalize_to_xpub(wallet.address)
-        new_txs = await self.xpub_client.get_xpub_transactions_since(xpub, after_ts)
+        new_txs = await self.xpub_client.get_xpub_transactions_since(wallet.address, after_ts)
 
         if not new_txs:
             return 0

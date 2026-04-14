@@ -1,4 +1,4 @@
-"""Tests for XpubClient (blockchain.info multiaddr endpoint)."""
+"""Tests for XpubClient — mempool.space per-address backend for HD wallet queries."""
 
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
@@ -7,63 +7,110 @@ import httpx
 import pytest
 import respx
 
+import hashlib as _hashlib
+
 from backend.clients.xpub import (
+    SATOSHI,
+    DerivedAddressData,
     XpubClient,
     XpubSummary,
     XpubTransaction,
-    DerivedAddressData,
 )
 
-BASE_URL = "https://blockchain.info"
-MULTIADDR_PATH = f"{BASE_URL}/multiaddr"
-XPUB = "xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oijk3e1xt3t4"
+BASE_URL = "https://mempool.space/api"
+
+# A valid account-level xpub key (BIP32 TV1 m/0H).
+XPUB = "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
+
+# Same key material with zpub/ypub version bytes
 
 
-def _multiaddr_response(
-    balance_sat: int = 100_000_000,
-    n_tx: int = 2,
-    addresses: list | None = None,
-    txs: list | None = None,
+def _reversion(key, new_version_hex):
+    _BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    _BASE58_MAP = {c: i for i, c in enumerate(_BASE58_CHARS)}
+
+    def decode(s):
+        num = 0
+        for ch in s:
+            num = num * 58 + _BASE58_MAP[ch]
+        leading = len(s) - len(s.lstrip("1"))
+        byte_len = (num.bit_length() + 7) // 8 if num > 0 else 1
+        return b"\x00" * leading + num.to_bytes(byte_len, "big")
+
+    def encode(data):
+        num = int.from_bytes(data, "big")
+        result = []
+        while num > 0:
+            num, rem = divmod(num, 58)
+            result.append(_BASE58_CHARS[rem])
+        leading = len(data) - len(data.lstrip(b"\x00"))
+        return "1" * leading + "".join(reversed(result))
+
+    decoded = decode(key)
+    payload = decoded[:-4]
+    new_payload = bytes.fromhex(new_version_hex) + payload[4:]
+    checksum = _hashlib.sha256(_hashlib.sha256(new_payload).digest()).digest()[:4]
+    return encode(new_payload + checksum)
+
+
+ZPUB = _reversion(XPUB, "04B24746")
+YPUB = _reversion(XPUB, "049D7CB2")
+
+
+def _addr_response(
+    tx_count: int = 0,
+    funded_sum: int = 0,
+    spent_sum: int = 0,
 ) -> dict:
-    """Build a minimal multiaddr response."""
-    if addresses is None:
-        addresses = [
-            {
-                "address": "bc1qaddr1",
-                "final_balance": 60_000_000,
-                "n_tx": 1,
-                "total_received": 60_000_000,
-                "total_sent": 0,
-            },
-            {
-                "address": "bc1qaddr2",
-                "final_balance": 40_000_000,
-                "n_tx": 1,
-                "total_received": 40_000_000,
-                "total_sent": 0,
-            },
-        ]
-    if txs is None:
-        txs = [
-            {
-                "hash": "txhash2",
-                "time": 1700001000,
-                "block_height": 820001,
-                "result": -50_000,
-            },
-            {
-                "hash": "txhash1",
-                "time": 1700000000,
-                "block_height": 820000,
-                "result": 100_000_000,
-            },
-        ]
+    """Build a minimal /address/{addr} API response."""
     return {
-        "wallet": {"final_balance": balance_sat, "n_tx": n_tx},
-        "addresses": addresses,
-        "txs": txs,
-        "info": {"n_tx": n_tx, "n_unredeemed": 1},
+        "address": "placeholder",
+        "chain_stats": {
+            "funded_txo_sum": funded_sum,
+            "spent_txo_sum": spent_sum,
+            "tx_count": tx_count,
+        },
+        "mempool_stats": {
+            "funded_txo_sum": 0,
+            "spent_txo_sum": 0,
+            "tx_count": 0,
+        },
     }
+
+
+def _tx_response(
+    txid: str,
+    block_time: int,
+    block_height: int,
+    vout_addr: str,
+    vout_value: int,
+    vin_addr: str = "",
+    vin_value: int = 0,
+    confirmed: bool = True,
+) -> dict:
+    """Build a minimal full tx object as returned by /address/{addr}/txs/chain."""
+    tx: dict = {
+        "txid": txid,
+        "status": {
+            "confirmed": confirmed,
+            "block_height": block_height if confirmed else None,
+            "block_time": block_time if confirmed else None,
+        },
+        "vout": [],
+        "vin": [],
+    }
+    if vout_addr:
+        tx["vout"].append({"value": vout_value, "scriptpubkey_address": vout_addr})
+    if vin_addr:
+        tx["vin"].append(
+            {
+                "prevout": {
+                    "value": vin_value,
+                    "scriptpubkey_address": vin_addr,
+                }
+            }
+        )
+    return tx
 
 
 @pytest.fixture
@@ -72,193 +119,328 @@ def client():
 
 
 # ---------------------------------------------------------------------------
-# get_xpub_summary
+# SATOSHI constant is importable (used by refresh.py)
+# ---------------------------------------------------------------------------
+
+
+def test_satoshi_constant():
+    assert SATOSHI == Decimal("100000000")
+
+
+# ---------------------------------------------------------------------------
+# XpubSummary / DerivedAddressData / XpubTransaction dataclasses
+# ---------------------------------------------------------------------------
+
+
+def test_xpub_summary_fields():
+    derived = [DerivedAddressData(address="bc1qfoo", balance_sat=1000, n_tx=1)]
+    summary = XpubSummary(
+        balance_sat=1000,
+        balance_btc=Decimal("0.00001"),
+        n_tx=1,
+        derived_addresses=derived,
+    )
+    assert summary.balance_sat == 1000
+    assert summary.n_tx == 1
+    assert summary.derived_addresses == derived
+
+
+def test_xpub_transaction_fields():
+    tx = XpubTransaction(tx_hash="abc", timestamp=1700000000, block_height=820000, amount_sat=50000)
+    assert tx.tx_hash == "abc"
+    assert tx.timestamp == 1700000000
+    assert tx.amount_sat == 50000
+
+
+# ---------------------------------------------------------------------------
+# get_xpub_summary — uses _scan_active_addresses
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_get_xpub_summary_parses_response(client):
-    """Mock multiaddr response → correct XpubSummary."""
-    respx.get(MULTIADDR_PATH).mock(
-        return_value=httpx.Response(200, json=_multiaddr_response())
+async def test_get_xpub_summary_empty_wallet(client):
+    """No active addresses → balance=0, n_tx=0, derived_addresses=[]."""
+    # With GAP_LIMIT=20 addresses per chain side and all returning n_tx=0,
+    # the scanner stops after one batch per chain.
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        return_value=httpx.Response(200, json=_addr_response(tx_count=0))
     )
-
-    summary = await client.get_xpub_summary(XPUB)
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        summary = await client.get_xpub_summary(XPUB)
 
     assert isinstance(summary, XpubSummary)
-    assert summary.balance_sat == 100_000_000
-    assert summary.balance_btc == Decimal("1.0")
-    assert summary.n_tx == 2
-    assert len(summary.derived_addresses) == 2
-
-    addr1 = summary.derived_addresses[0]
-    assert isinstance(addr1, DerivedAddressData)
-    assert addr1.address == "bc1qaddr1"
-    assert addr1.balance_sat == 60_000_000
-    assert addr1.n_tx == 1
-
-    addr2 = summary.derived_addresses[1]
-    assert addr2.address == "bc1qaddr2"
-    assert addr2.balance_sat == 40_000_000
-
-
-@respx.mock
-async def test_get_xpub_summary_empty_addresses(client):
-    """addresses: [] → derived_addresses = [], balance_sat = 0."""
-    respx.get(MULTIADDR_PATH).mock(
-        return_value=httpx.Response(
-            200,
-            json=_multiaddr_response(balance_sat=0, n_tx=0, addresses=[], txs=[]),
-        )
-    )
-
-    summary = await client.get_xpub_summary(XPUB)
-
-    assert summary.derived_addresses == []
     assert summary.balance_sat == 0
     assert summary.balance_btc == Decimal("0")
     assert summary.n_tx == 0
+    assert summary.derived_addresses == []
 
 
 @respx.mock
-async def test_get_xpub_summary_uses_n1_param(client):
-    """get_xpub_summary passes n=1 to minimise the txs array."""
-    captured_params = {}
-
-    def capture(request):
-        captured_params.update(dict(request.url.params))
-        return httpx.Response(200, json=_multiaddr_response())
-
-    respx.get(MULTIADDR_PATH).mock(side_effect=capture)
-
-    await client.get_xpub_summary(XPUB)
-
-    assert captured_params.get("n") == "1"
-    assert captured_params.get("offset") == "0"
-    assert captured_params.get("active") == XPUB
-
-
-# ---------------------------------------------------------------------------
-# get_xpub_transactions_all
-# ---------------------------------------------------------------------------
-
-
-@respx.mock
-async def test_get_xpub_transactions_all_single_page(client):
-    """n_tx ≤ 50 → single request, result sorted oldest-first."""
-    respx.get(MULTIADDR_PATH).mock(
-        return_value=httpx.Response(200, json=_multiaddr_response(n_tx=2))
-    )
-
-    txs = await client.get_xpub_transactions_all(XPUB)
-
-    assert len(txs) == 2
-    assert isinstance(txs[0], XpubTransaction)
-    # Should be sorted oldest-first
-    assert txs[0].timestamp <= txs[1].timestamp
-    assert txs[0].tx_hash == "txhash1"
-    assert txs[1].tx_hash == "txhash2"
-    assert txs[0].amount_sat == 100_000_000
-    assert txs[1].amount_sat == -50_000
-
-
-@respx.mock
-async def test_get_xpub_transactions_all_multi_page(client):
-    """n_tx = 125 → 3 requests (offsets 0, 50, 100)."""
-    call_params = []
-
-    def make_page(offset: int, count: int):
-        """Generate `count` dummy transactions starting at a given offset."""
-        return [
-            {
-                "hash": f"tx_{offset + i}",
-                "time": 1700000000 + offset + i,
-                "block_height": 820000 + offset + i,
-                "result": 1000,
-            }
-            for i in range(count)
-        ]
-
-    def side_effect(request):
-        params = dict(request.url.params)
-        call_params.append(params)
-        offset = int(params.get("offset", 0))
-        n = int(params.get("n", 50))
-        if offset == 0:
-            count = n  # full page
-        elif offset == 50:
-            count = n  # full page
-        else:
-            count = 25  # last page (offset=100, only 25 remain)
-        return httpx.Response(
-            200,
-            json={
-                "wallet": {"final_balance": 125_000, "n_tx": 125},
-                "addresses": [],
-                "txs": make_page(offset, count),
-                "info": {"n_tx": 125, "n_unredeemed": 0},
-            },
-        )
-
-    respx.get(MULTIADDR_PATH).mock(side_effect=side_effect)
-
-    with patch(
-        "backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock
-    ) as mock_sleep:
-        txs = await client.get_xpub_transactions_all(XPUB)
-
-    assert len(txs) == 125
-    assert len(call_params) == 3
-    offsets = [int(p["offset"]) for p in call_params]
-    assert offsets == [0, 50, 100]
-    # Sorted oldest-first: timestamp increases
-    timestamps = [t.timestamp for t in txs]
-    assert timestamps == sorted(timestamps)
-    # Sleep called between pages (between page 2 and 3, once after first page)
-    assert mock_sleep.call_count == 2
-    mock_sleep.assert_called_with(0.2)
-
-
-@respx.mock
-async def test_get_xpub_transactions_all_stops_on_empty_page(client):
-    """Pagination stops if API returns empty txs before n_tx is reached."""
+async def test_get_xpub_summary_with_active_addresses(client):
+    """Active addresses (n_tx > 0) appear in derived_addresses; balance is summed."""
     call_count = 0
 
-    def side_effect(request):
+    def addr_side_effect(request):
         nonlocal call_count
         call_count += 1
-        offset = int(dict(request.url.params).get("offset", 0))
-        txs = (
-            [
-                {
-                    "hash": f"tx_{offset + i}",
-                    "time": 1700000000 + offset + i,
-                    "block_height": 820000,
-                    "result": 1000,
-                }
-                for i in range(50)
-            ]
-            if offset == 0
-            else []
-        )
-        return httpx.Response(
-            200,
-            json={
-                "wallet": {"final_balance": 0, "n_tx": 200},
-                "addresses": [],
-                "txs": txs,
-                "info": {"n_tx": 200, "n_unredeemed": 0},
-            },
-        )
+        # First two addresses of chain=0 are active; rest unused
+        if call_count <= 2:
+            return httpx.Response(
+                200, json=_addr_response(tx_count=1, funded_sum=50_000_000, spent_sum=0)
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
 
-    respx.get(MULTIADDR_PATH).mock(side_effect=side_effect)
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        side_effect=addr_side_effect
+    )
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        summary = await client.get_xpub_summary(XPUB)
+
+    # 2 active addresses, each with 50_000_000 sat
+    assert summary.balance_sat == 100_000_000
+    assert summary.balance_btc == Decimal("1")
+    assert summary.n_tx == 2
+    assert len(summary.derived_addresses) == 2
+    assert all(isinstance(a, DerivedAddressData) for a in summary.derived_addresses)
+    assert all(a.balance_sat == 50_000_000 for a in summary.derived_addresses)
+
+
+@respx.mock
+async def test_get_xpub_summary_returns_xpub_summary_type(client):
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        return_value=httpx.Response(200, json=_addr_response())
+    )
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        result = await client.get_xpub_summary(XPUB)
+    assert isinstance(result, XpubSummary)
+
+
+# ---------------------------------------------------------------------------
+# _scan_active_addresses — gap limit behavior
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_scan_stops_after_gap_limit(client):
+    """After GAP_LIMIT consecutive unused addresses, scanning stops."""
+    # Only the very first address is active; all others have n_tx=0
+    first_call = True
+
+    def side_effect(request):
+        nonlocal first_call
+        if first_call:
+            first_call = False
+            return httpx.Response(
+                200, json=_addr_response(tx_count=1, funded_sum=10_000, spent_sum=0)
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        side_effect=side_effect
+    )
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        active = await client._scan_active_addresses(XPUB)
+
+    # Only 1 active address from chain=0; chain=1 scans GAP_LIMIT and finds nothing
+    assert len(active) == 1
+    assert active[0].n_tx == 1
+
+
+@respx.mock
+async def test_scan_scans_both_chains(client):
+    """Both receive (chain=0) and change (chain=1) addresses are scanned."""
+    # Count unique addresses scanned across both chains
+    scanned_urls: list[str] = []
+
+    def side_effect(request):
+        url = str(request.url)
+        scanned_urls.append(url)
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        side_effect=side_effect
+    )
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        await client._scan_active_addresses(XPUB)
+
+    # Should query 2 * GAP_LIMIT addresses (one batch each for chain 0 and 1)
+    assert len(scanned_urls) == 2 * client.GAP_LIMIT
+
+
+# ---------------------------------------------------------------------------
+# get_xpub_transactions_all — deduplication and net amount
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_get_xpub_transactions_all_empty(client):
+    """No active addresses → empty transaction list."""
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        return_value=httpx.Response(200, json=_addr_response(tx_count=0))
+    )
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_xpub_transactions_all(XPUB)
+    assert txs == []
+
+
+@respx.mock
+async def test_get_xpub_transactions_all_deduplication(client):
+    """A tx appearing in multiple addresses' histories is deduplicated."""
+    # Derive the two addresses we'll use
+    from backend.clients.hd_derive import derive_address_at
+
+    addr0 = derive_address_at(XPUB, 0, 0)
+    addr1 = derive_address_at(XPUB, 0, 1)
+
+    shared_txid = "shared_tx_abc123"
+    shared_tx = _tx_response(
+        txid=shared_txid,
+        block_time=1700000000,
+        block_height=820000,
+        vout_addr=addr0,
+        vout_value=50_000_000,
+    )
+    # Add addr1 as second vout in shared tx
+    shared_tx["vout"].append({"value": 30_000_000, "scriptpubkey_address": addr1})
+
+    addr_call_count = 0
+    txs_call_count = 0
+
+    def addr_side_effect(request):
+        nonlocal addr_call_count
+        addr_call_count += 1
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=1, funded_sum=50_000_000, spent_sum=0),
+            )
+        elif addr1 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=1, funded_sum=30_000_000, spent_sum=0),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    def txs_side_effect(request):
+        nonlocal txs_call_count
+        txs_call_count += 1
+        url = str(request.url)
+        if addr0 in url or addr1 in url:
+            return httpx.Response(200, json=[shared_tx])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+$").mock(
+        side_effect=addr_side_effect
+    )
 
     with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
         txs = await client.get_xpub_transactions_all(XPUB)
 
-    # Two requests made (offset 0, offset 50 → empty → stop)
-    assert call_count == 2
-    assert len(txs) == 50
+    # The shared tx must appear exactly once
+    assert len(txs) == 1
+    assert txs[0].tx_hash == shared_txid
+    # Net amount = 50M + 30M = 80M sat (both vouts go to wallet addresses)
+    assert txs[0].amount_sat == 80_000_000
+
+
+@respx.mock
+async def test_get_xpub_transactions_all_sorted_oldest_first(client):
+    """Returned transactions are sorted oldest-first."""
+    from backend.clients.hd_derive import derive_address_at
+
+    addr0 = derive_address_at(XPUB, 0, 0)
+
+    tx1 = _tx_response(
+        txid="tx1", block_time=1700001000, block_height=820001,
+        vout_addr=addr0, vout_value=10_000_000,
+    )
+    tx2 = _tx_response(
+        txid="tx2", block_time=1700000000, block_height=820000,
+        vout_addr=addr0, vout_value=20_000_000,
+    )
+
+    def addr_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=2, funded_sum=30_000_000, spent_sum=0),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    def txs_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            # API returns newest-first (tx1, then tx2)
+            return httpx.Response(200, json=[tx1, tx2])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+$").mock(
+        side_effect=addr_side_effect
+    )
+
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_xpub_transactions_all(XPUB)
+
+    assert len(txs) == 2
+    # Sorted oldest-first
+    assert txs[0].timestamp <= txs[1].timestamp
+    assert txs[0].tx_hash == "tx2"  # older
+    assert txs[1].tx_hash == "tx1"  # newer
+
+
+@respx.mock
+async def test_get_xpub_transactions_all_skips_unconfirmed(client):
+    """Unconfirmed transactions (confirmed=False) are excluded."""
+    from backend.clients.hd_derive import derive_address_at
+
+    addr0 = derive_address_at(XPUB, 0, 0)
+
+    confirmed_tx = _tx_response(
+        txid="confirmed", block_time=1700000000, block_height=820000,
+        vout_addr=addr0, vout_value=10_000_000, confirmed=True,
+    )
+    unconfirmed_tx = _tx_response(
+        txid="unconfirmed", block_time=0, block_height=0,
+        vout_addr=addr0, vout_value=5_000_000, confirmed=False,
+    )
+
+    def addr_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=2, funded_sum=15_000_000, spent_sum=0),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    def txs_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(200, json=[confirmed_tx, unconfirmed_tx])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+$").mock(
+        side_effect=addr_side_effect
+    )
+
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_xpub_transactions_all(XPUB)
+
+    # Only the confirmed tx returned
+    assert len(txs) == 1
+    assert txs[0].tx_hash == "confirmed"
+    assert txs[0].timestamp == 1700000000
 
 
 # ---------------------------------------------------------------------------
@@ -267,300 +449,463 @@ async def test_get_xpub_transactions_all_stops_on_empty_page(client):
 
 
 @respx.mock
-async def test_get_xpub_transactions_since(client):
-    """Stop pagination when tx.timestamp ≤ after_timestamp; result sorted oldest-first."""
-    after_ts = 1700001000
+async def test_get_xpub_transactions_since_filters_by_timestamp(client):
+    """Only transactions with timestamp > after_timestamp are returned."""
+    from backend.clients.hd_derive import derive_address_at
 
-    # Page has: newest tx (1700002000), then one at boundary (1700001000) → stop
-    txs_page = [
-        {"hash": "txnew2", "time": 1700002000, "block_height": 820002, "result": 500},
-        {"hash": "txnew1", "time": 1700001500, "block_height": 820001, "result": 300},
-        {"hash": "txold", "time": 1700001000, "block_height": 820000, "result": 100},
-    ]
+    addr0 = derive_address_at(XPUB, 0, 0)
+    after_ts = 1700000000
 
-    call_count = 0
+    old_tx = _tx_response(
+        txid="old", block_time=1700000000, block_height=820000,
+        vout_addr=addr0, vout_value=10_000_000,
+    )
+    new_tx = _tx_response(
+        txid="new", block_time=1700001000, block_height=820001,
+        vout_addr=addr0, vout_value=5_000_000,
+    )
 
-    def side_effect(request):
-        nonlocal call_count
-        call_count += 1
-        return httpx.Response(
-            200,
-            json={
-                "wallet": {"final_balance": 0, "n_tx": 10},
-                "addresses": [],
-                "txs": txs_page,
-                "info": {"n_tx": 10},
-            },
-        )
+    def addr_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=2, funded_sum=15_000_000, spent_sum=0),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
 
-    respx.get(MULTIADDR_PATH).mock(side_effect=side_effect)
+    def txs_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            # API returns newest first
+            return httpx.Response(200, json=[new_tx, old_tx])
+        return httpx.Response(200, json=[])
 
-    txs = await client.get_xpub_transactions_since(XPUB, after_ts)
-
-    # Only txs strictly newer than after_ts
-    assert len(txs) == 2
-    assert call_count == 1
-    # Sorted oldest-first
-    assert txs[0].tx_hash == "txnew1"
-    assert txs[1].tx_hash == "txnew2"
-
-
-@respx.mock
-async def test_get_xpub_transactions_since_all_new(client):
-    """If all txs on all pages are new, fetches all pages."""
-    call_count = 0
-    after_ts = 1699999999
-
-    def side_effect(request):
-        nonlocal call_count
-        call_count += 1
-        offset = int(dict(request.url.params).get("offset", 0))
-        if offset == 0:
-            txs = [
-                {
-                    "hash": f"tx_p1_{i}",
-                    "time": 1700001000 + i,
-                    "block_height": 820000,
-                    "result": 1000,
-                }
-                for i in range(50)
-            ]
-        elif offset == 50:
-            txs = [
-                {
-                    "hash": f"tx_p2_{i}",
-                    "time": 1700000001 + i,
-                    "block_height": 820001,
-                    "result": 1000,
-                }
-                for i in range(3)
-            ]
-        else:
-            txs = []
-        return httpx.Response(
-            200,
-            json={
-                "wallet": {"final_balance": 0, "n_tx": 53},
-                "addresses": [],
-                "txs": txs,
-                "info": {"n_tx": 53},
-            },
-        )
-
-    respx.get(MULTIADDR_PATH).mock(side_effect=side_effect)
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+$").mock(
+        side_effect=addr_side_effect
+    )
 
     with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
         txs = await client.get_xpub_transactions_since(XPUB, after_ts)
 
-    # All 53 transactions are newer than after_ts
-    assert len(txs) == 53
-    assert call_count == 3
-
-
-# ---------------------------------------------------------------------------
-# Unconfirmed transaction (time=None)
-# ---------------------------------------------------------------------------
+    # Only the new tx (timestamp > after_ts)
+    assert len(txs) == 1
+    assert txs[0].tx_hash == "new"
+    assert txs[0].timestamp == 1700001000
 
 
 @respx.mock
-async def test_xpub_client_unconfirmed_tx(client):
-    """tx with time=None → XpubTransaction.timestamp is preserved as None.
+async def test_get_xpub_transactions_since_sorted_oldest_first(client):
+    """Results from get_xpub_transactions_since are sorted oldest-first."""
+    from backend.clients.hd_derive import derive_address_at
 
-    The service layer uses timestamp=None to detect and skip unconfirmed
-    transactions during history replay.
-    """
-    unconfirmed_tx = {
-        "hash": "txunconfirmed",
-        "time": None,
-        "block_height": None,
-        "result": 10_000,
-    }
-    confirmed_tx = {
-        "hash": "txconfirmed",
-        "time": 1700000000,
-        "block_height": 820000,
-        "result": 50_000,
-    }
+    addr0 = derive_address_at(XPUB, 0, 0)
+    after_ts = 1699000000
 
-    respx.get(MULTIADDR_PATH).mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "wallet": {"final_balance": 60_000, "n_tx": 2},
-                "addresses": [],
-                "txs": [unconfirmed_tx, confirmed_tx],
-                "info": {"n_tx": 2},
-            },
-        )
+    tx_a = _tx_response(
+        txid="newer", block_time=1700002000, block_height=820002,
+        vout_addr=addr0, vout_value=5_000_000,
+    )
+    tx_b = _tx_response(
+        txid="older", block_time=1700001000, block_height=820001,
+        vout_addr=addr0, vout_value=10_000_000,
     )
 
-    txs = await client.get_xpub_transactions_all(XPUB)
+    def addr_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=2, funded_sum=15_000_000, spent_sum=0),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    def txs_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(200, json=[tx_a, tx_b])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+$").mock(
+        side_effect=addr_side_effect
+    )
+
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_xpub_transactions_since(XPUB, after_ts)
 
     assert len(txs) == 2
-    # Unconfirmed tx is present but with timestamp=None
-    unconfirmed = next(t for t in txs if t.tx_hash == "txunconfirmed")
-    assert unconfirmed.timestamp is None
-    assert unconfirmed.block_height is None
-    # The confirmed tx has its proper timestamp
-    confirmed = next(t for t in txs if t.tx_hash == "txconfirmed")
-    assert confirmed.timestamp == 1700000000
-    assert confirmed.block_height == 820000
+    assert txs[0].timestamp <= txs[1].timestamp
+    assert txs[0].tx_hash == "older"
+    assert txs[1].tx_hash == "newer"
 
 
 # ---------------------------------------------------------------------------
-# info.n_tx = 0 → no extra requests
+# Net amount computation
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_xpub_client_zero_n_tx(client):
-    """info.n_tx=0 → returns [], no extra requests made."""
-    call_count = 0
+async def test_net_amount_incoming(client):
+    """tx with vout to wallet address → positive net amount."""
+    from backend.clients.hd_derive import derive_address_at
 
-    def side_effect(request):
-        nonlocal call_count
+    addr0 = derive_address_at(XPUB, 0, 0)
+
+    tx = _tx_response(
+        txid="incoming", block_time=1700000000, block_height=820000,
+        vout_addr=addr0, vout_value=100_000_000,
+    )
+
+    def addr_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=1, funded_sum=100_000_000, spent_sum=0),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    def txs_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(200, json=[tx])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+$").mock(
+        side_effect=addr_side_effect
+    )
+
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_xpub_transactions_all(XPUB)
+
+    assert len(txs) == 1
+    assert txs[0].amount_sat == 100_000_000
+
+
+@respx.mock
+async def test_net_amount_outgoing(client):
+    """tx with vin from wallet address → negative net amount."""
+    from backend.clients.hd_derive import derive_address_at
+
+    addr0 = derive_address_at(XPUB, 0, 0)
+
+    tx = {
+        "txid": "outgoing",
+        "status": {"confirmed": True, "block_height": 820000, "block_time": 1700000000},
+        "vout": [{"value": 50_000_000, "scriptpubkey_address": "external_addr"}],
+        "vin": [
+            {
+                "prevout": {
+                    "value": 100_000_000,
+                    "scriptpubkey_address": addr0,
+                }
+            }
+        ],
+    }
+
+    def addr_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=1, funded_sum=100_000_000, spent_sum=100_000_000),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    def txs_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(200, json=[tx])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+$").mock(
+        side_effect=addr_side_effect
+    )
+
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_xpub_transactions_all(XPUB)
+
+    assert len(txs) == 1
+    assert txs[0].amount_sat == -100_000_000
+
+
+# ---------------------------------------------------------------------------
+# _get_all_txs_for_address — pagination (25 per page)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_get_all_txs_for_address_paginates(client):
+    """Fetches multiple pages when first page has 25 items."""
+    from backend.clients.hd_derive import derive_address_at
+
+    addr = derive_address_at(XPUB, 0, 0)
+    call_count = 0
+    last_txid_seen = None
+
+    def make_page(n, start_time):
+        return [
+            {
+                "txid": f"tx_{start_time + i}",
+                "status": {
+                    "confirmed": True,
+                    "block_height": 820000 + start_time + i,
+                    "block_time": start_time + i,
+                },
+                "vout": [{"value": 1000, "scriptpubkey_address": addr}],
+                "vin": [],
+            }
+            for i in range(n)
+        ]
+
+    def txs_side_effect(request):
+        nonlocal call_count, last_txid_seen
         call_count += 1
-        return httpx.Response(
-            200,
-            json={
-                "wallet": {"final_balance": 0, "n_tx": 0},
-                "addresses": [],
-                "txs": [],
-                "info": {"n_tx": 0},
-            },
-        )
+        url = str(request.url)
+        if "/txs/chain/" in url:
+            # Second page: 10 items (partial page)
+            return httpx.Response(200, json=make_page(10, 100))
+        else:
+            # First page: 25 items (full page — triggers next page fetch)
+            return httpx.Response(200, json=make_page(25, 0))
 
-    respx.get(MULTIADDR_PATH).mock(side_effect=side_effect)
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
 
-    txs = await client.get_xpub_transactions_all(XPUB)
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        result = await client._get_all_txs_for_address(addr)
 
-    assert txs == []
-    assert call_count == 1  # Only the first request, no pagination
-
-
-# ---------------------------------------------------------------------------
-# Rate limit (429) — inherited BaseClient retry
-# ---------------------------------------------------------------------------
+    # Two pages fetched: 25 + 10 = 35 confirmed txs
+    assert len(result) == 35
+    assert call_count == 2
 
 
 @respx.mock
-async def test_xpub_client_rate_limit_handling(client):
-    """429 → waits Retry-After, retries once, returns successfully."""
+async def test_get_all_txs_for_address_stops_on_empty_page(client):
+    """Stops pagination when page is empty."""
+    from backend.clients.hd_derive import derive_address_at
+
+    addr = derive_address_at(XPUB, 0, 0)
     call_count = 0
 
-    def side_effect(request):
+    def txs_side_effect(request):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            return httpx.Response(429, headers={"Retry-After": "5"})
-        return httpx.Response(200, json=_multiaddr_response())
+            return httpx.Response(200, json=[
+                {
+                    "txid": f"tx_{i}",
+                    "status": {"confirmed": True, "block_height": 820000 + i, "block_time": 1700000000 + i},
+                    "vout": [{"value": 1000, "scriptpubkey_address": addr}],
+                    "vin": [],
+                }
+                for i in range(25)
+            ])
+        return httpx.Response(200, json=[])
 
-    respx.get(MULTIADDR_PATH).mock(side_effect=side_effect)
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
 
-    with patch(
-        "backend.clients.base.asyncio.sleep", new_callable=AsyncMock
-    ) as mock_sleep:
-        summary = await client.get_xpub_summary(XPUB)
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        result = await client._get_all_txs_for_address(addr)
 
+    assert len(result) == 25
     assert call_count == 2
-    mock_sleep.assert_called_once_with(5)
-    assert summary.balance_sat == 100_000_000
 
 
 # ---------------------------------------------------------------------------
-# FR-H13: n_tx > 0 filter — only active addresses returned
+# zpub key type — address format
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_xpub_summary_filters_zero_tx_addresses(client):
-    """Addresses with n_tx=0 must be excluded from derived_addresses (FR-H13)."""
-    addresses = [
-        {
-            "address": "bc1qactive",
-            "final_balance": 50_000_000,
-            "n_tx": 3,
-            "total_received": 50_000_000,
-            "total_sent": 0,
-        },
-        {
-            "address": "bc1qinactive",
-            "final_balance": 0,
-            "n_tx": 0,
-            "total_received": 0,
-            "total_sent": 0,
-        },
-    ]
-    respx.get(MULTIADDR_PATH).mock(
-        return_value=httpx.Response(
-            200,
-            json=_multiaddr_response(
-                balance_sat=50_000_000, n_tx=3, addresses=addresses
-            ),
-        )
+async def test_get_xpub_summary_zpub_derives_bech32_addresses(client):
+    """get_xpub_summary with a zpub key correctly scans bc1q... addresses."""
+    scanned_addresses: list[str] = []
+
+    def addr_side_effect(request):
+        url = str(request.url)
+        # Extract the address portion from the URL
+        addr = url.split("/address/")[1].split("/")[0]
+        scanned_addresses.append(addr)
+        return httpx.Response(200, json=_addr_response(tx_count=0))
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        side_effect=addr_side_effect
     )
 
-    summary = await client.get_xpub_summary(XPUB)
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        await client.get_xpub_summary(ZPUB)
 
-    assert len(summary.derived_addresses) == 1
-    assert summary.derived_addresses[0].address == "bc1qactive"
-    assert summary.derived_addresses[0].n_tx == 3
+    # All scanned addresses must be bech32 (bc1q...) for zpub
+    for addr in scanned_addresses:
+        assert addr.startswith("bc1q"), (
+            f"zpub should derive bc1q addresses, got: {addr!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# HTTP 5xx — raises
+# ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_xpub_summary_xpub_string_not_included_as_address(client):
-    """The xpub key string echoed back by blockchain.info with n_tx=0 must be excluded (FR-H13)."""
-    addresses = [
-        {
-            "address": XPUB,  # blockchain.info quirk: xpub echoed as an address entry
-            "final_balance": 0,
-            "n_tx": 0,
-            "total_received": 0,
-            "total_sent": 0,
-        },
-        {
-            "address": "bc1qrealaddr",
-            "final_balance": 10_000_000,
-            "n_tx": 1,
-            "total_received": 10_000_000,
-            "total_sent": 0,
-        },
-    ]
-    respx.get(MULTIADDR_PATH).mock(
-        return_value=httpx.Response(
-            200,
-            json=_multiaddr_response(
-                balance_sat=10_000_000, n_tx=1, addresses=addresses
-            ),
-        )
+async def test_xpub_client_server_error_on_address_scan(client):
+    """500 from mempool.space /address endpoint → raises HTTPStatusError."""
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        return_value=httpx.Response(500)
     )
 
-    summary = await client.get_xpub_summary(XPUB)
-
-    assert len(summary.derived_addresses) == 1
-    assert summary.derived_addresses[0].address == "bc1qrealaddr"
-    # The xpub string itself must not appear in derived_addresses
-    assert not any(a.address == XPUB for a in summary.derived_addresses)
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.get_xpub_summary(XPUB)
 
 
 # ---------------------------------------------------------------------------
-# HTTP 5xx — raises on first failure (no retry from 5xx in BaseClient)
+# get_transactions_for_addresses — skip gap-limit scan
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_xpub_client_server_error(client):
-    """500 → raises HTTPStatusError immediately (no retry for 5xx)."""
+async def test_get_transactions_for_addresses_skips_scan(client):
+    """get_transactions_for_addresses uses the supplied address set, not gap scan."""
+    from backend.clients.hd_derive import derive_address_at
+
+    addr0 = derive_address_at(XPUB, 0, 0)
+    scan_called = False
+
+    tx = _tx_response(
+        txid="tx_foo",
+        block_time=1700000000,
+        block_height=820000,
+        vout_addr=addr0,
+        vout_value=10_000_000,
+    )
+
+    original_scan = client._scan_active_addresses
+
+    async def spy_scan(*a, **kw):
+        nonlocal scan_called
+        scan_called = True
+        return await original_scan(*a, **kw)
+
+    client._scan_active_addresses = spy_scan
+
+    def txs_side_effect(request):
+        url = str(request.url)
+        if addr0 in url:
+            return httpx.Response(200, json=[tx])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_transactions_for_addresses({addr0})
+
+    assert not scan_called, "_scan_active_addresses should NOT be called"
+    assert len(txs) == 1
+    assert txs[0].tx_hash == "tx_foo"
+    assert txs[0].amount_sat == 10_000_000
+
+
+@respx.mock
+async def test_get_transactions_for_addresses_uses_full_addr_set_for_net(client):
+    """Net amount is computed across all supplied addresses (change + receive)."""
+    from backend.clients.hd_derive import derive_address_at
+
+    receive_addr = derive_address_at(XPUB, 0, 0)
+    change_addr = derive_address_at(XPUB, 1, 0)
+
+    # A send tx: 100k sat from receive_addr, 60k change to change_addr, rest to external
+    spend_tx = {
+        "txid": "spend_tx",
+        "status": {"confirmed": True, "block_height": 820000, "block_time": 1700000000},
+        "vout": [
+            {"value": 60_000, "scriptpubkey_address": change_addr},
+            {"value": 30_000, "scriptpubkey_address": "external"},
+        ],
+        "vin": [
+            {"prevout": {"value": 100_000, "scriptpubkey_address": receive_addr}}
+        ],
+    }
+
+    def txs_side_effect(request):
+        url = str(request.url)
+        if receive_addr in url or change_addr in url:
+            return httpx.Response(200, json=[spend_tx])
+        return httpx.Response(200, json=[])
+
+    respx.get(url__regex=r"https://mempool\.space/api/address/[^/]+/txs").mock(
+        side_effect=txs_side_effect
+    )
+
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        txs = await client.get_transactions_for_addresses({receive_addr, change_addr})
+
+    # Deduplicated to 1 tx; net = +60k (change received) - 100k (sent) = -40k
+    assert len(txs) == 1
+    assert txs[0].amount_sat == -40_000
+
+
+# ---------------------------------------------------------------------------
+# Zero-balance address filtering in get_xpub_summary.derived_addresses
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_get_xpub_summary_excludes_zero_balance_from_derived(client):
+    """derived_addresses only contains addresses with balance_sat > 0."""
+    from backend.clients.hd_derive import derive_address_at
+
+    addr0 = derive_address_at(XPUB, 0, 0)  # has balance
+    addr1 = derive_address_at(XPUB, 0, 1)  # fully spent, balance = 0
+
     call_count = 0
 
-    def side_effect(request):
+    def addr_side_effect(request):
         nonlocal call_count
         call_count += 1
-        return httpx.Response(500)
+        url = str(request.url)
+        if addr0 in url:
+            # Active with positive balance
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=1, funded_sum=50_000_000, spent_sum=0),
+            )
+        if addr1 in url:
+            # Active but fully spent
+            return httpx.Response(
+                200,
+                json=_addr_response(tx_count=2, funded_sum=30_000_000, spent_sum=30_000_000),
+            )
+        return httpx.Response(200, json=_addr_response(tx_count=0))
 
-    respx.get(MULTIADDR_PATH).mock(side_effect=side_effect)
+    respx.get(url__regex=r"https://mempool\.space/api/address/").mock(
+        side_effect=addr_side_effect
+    )
 
-    with pytest.raises(httpx.HTTPStatusError):
-        await client.get_xpub_summary(XPUB)
+    with patch("backend.clients.xpub.asyncio.sleep", new_callable=AsyncMock):
+        summary = await client.get_xpub_summary(XPUB)
 
-    assert call_count == 1
+    # Total balance: only addr0 contributes
+    assert summary.balance_sat == 50_000_000
+    # derived_addresses: only addr0 (balance > 0); addr1 excluded despite n_tx=2
+    assert len(summary.derived_addresses) == 1
+    assert summary.derived_addresses[0].address == addr0
+    assert summary.derived_addresses[0].balance_sat == 50_000_000

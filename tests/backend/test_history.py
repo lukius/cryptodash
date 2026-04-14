@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from backend.clients.xpub import XpubClient, XpubTransaction
+from backend.clients.xpub import XpubTransaction
 from backend.database import init_db
 from backend.models.user import User
 from backend.models.wallet import Wallet
@@ -850,44 +850,36 @@ async def test_hd_wallet_incremental_sync_no_history(session_factory, hd_wallet)
 
 @pytest.mark.asyncio
 async def test_hd_wallet_history_skips_unconfirmed(session_factory, hd_wallet):
-    """Transactions with time=None in the raw API response are excluded from replay.
+    """Transactions with timestamp=None are excluded from balance reconstruction.
 
-    Tests the real end-to-end path: raw API response dicts flow through
-    XpubClient._parse_txs, producing XpubTransaction(timestamp=None) for the
-    unconfirmed tx, which the service layer then skips during balance reconstruction.
+    XpubClient.get_xpub_transactions_all only returns confirmed transactions now
+    (confirmed=True check in _get_all_txs_for_address), but the service layer
+    also has a defensive guard: timestamp=None → skip. This test verifies that
+    the service-layer guard works correctly when XpubTransaction(timestamp=None)
+    is present in the list.
     """
-    # Build raw API-style dicts exactly as blockchain.info returns them
-    raw_api_txs = [
-        # Confirmed — oldest
-        {
-            "hash": "htx1",
-            "time": ts(2024, 1, 1),
-            "block_height": 800_000,
-            "result": 100_000_000,
-        },
-        # Unconfirmed — time=None (mempool tx)
-        {
-            "hash": "htx_unconfirmed",
-            "time": None,
-            "block_height": None,
-            "result": 50_000_000,
-        },
-        # Confirmed — newest
-        {
-            "hash": "htx2",
-            "time": ts(2024, 1, 2),
-            "block_height": 800_001,
-            "result": 20_000_000,
-        },
+    # Directly construct XpubTransaction objects — the new XpubClient no longer
+    # has a _parse_txs method; the service layer is what we're testing here.
+    parsed_txs = [
+        XpubTransaction(
+            tx_hash="htx1",
+            timestamp=ts(2024, 1, 1),
+            block_height=800_000,
+            amount_sat=100_000_000,
+        ),
+        XpubTransaction(
+            tx_hash="htx_unconfirmed",
+            timestamp=None,  # unconfirmed — must be skipped by service
+            block_height=None,
+            amount_sat=50_000_000,
+        ),
+        XpubTransaction(
+            tx_hash="htx2",
+            timestamp=ts(2024, 1, 2),
+            block_height=800_001,
+            amount_sat=20_000_000,
+        ),
     ]
-
-    # Parse through the real _parse_txs to produce XpubTransaction objects
-    # (this is what the production XpubClient does internally)
-    parsed_txs = XpubClient._parse_txs(None, raw_api_txs)  # type: ignore[arg-type]
-
-    # The unconfirmed tx must have timestamp=None after parsing
-    unconfirmed = next(t for t in parsed_txs if t.tx_hash == "htx_unconfirmed")
-    assert unconfirmed.timestamp is None
 
     # Sort oldest-first (XpubClient.get_xpub_transactions_all does this)
     parsed_txs.sort(key=lambda t: (t.timestamp if t.timestamp is not None else 0))

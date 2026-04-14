@@ -40,8 +40,10 @@ export function useApi() {
     });
 
     if (response.status === 401) {
-      auth.logout();
-      router.push("/login");
+      if (path !== "/auth/logout") {
+        auth.logout();
+        router.push("/login");
+      }
       throw new ApiError(401, "Unauthorized");
     }
 

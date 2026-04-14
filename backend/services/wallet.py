@@ -325,6 +325,7 @@ class WalletService:
                         ),
                     }
                     for row in da_rows
+                    if Decimal(row.current_balance_native) > 0
                 ]
                 derived_address_count = len(da_rows)
                 # Total count stored in config (may be >200)

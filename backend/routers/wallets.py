@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.dependencies import get_current_user, get_db
+from backend.core.dependencies import (
+    get_current_user,
+    get_db,
+    get_history_service,
+    get_refresh_service,
+)
 from backend.core.exceptions import (
     AddressValidationError,
     DuplicateWalletError,
@@ -79,8 +84,15 @@ async def add_wallet(
     body: WalletCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    refresh_service=Depends(get_refresh_service),
+    history_service=Depends(get_history_service),
 ) -> WalletResponse:
-    service = WalletService(db=db, user=current_user)
+    service = WalletService(
+        db=db,
+        user=current_user,
+        refresh_service=refresh_service,
+        history_service=history_service,
+    )
     try:
         wallet = await service.add_wallet(body.network, body.address, body.tag)
     except WalletLimitReachedError as exc:

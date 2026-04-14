@@ -43,7 +43,15 @@ async def get_current_user(
 
 
 async def get_refresh_service(request: Request):
-    return request.app.state.refresh_service
+    return getattr(request.app.state, "refresh_service", None)
+
+
+async def get_history_service(request: Request):
+    return getattr(request.app.state, "history_service", None)
+
+
+async def get_xpub_client(request: Request):
+    return getattr(request.app.state, "xpub_client", None)
 
 
 async def get_ws_manager(request: Request):

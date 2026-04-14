@@ -18,8 +18,6 @@ from backend.repositories.snapshot import (
     PriceSnapshotRepository,
 )
 from backend.repositories.wallet import WalletRepository
-from backend.services.wallet import normalize_to_xpub
-
 logger = logging.getLogger(__name__)
 
 _MAX_CONCURRENT = 5
@@ -139,9 +137,8 @@ class RefreshService:
         """
         if self.xpub_client is None:
             raise RuntimeError("xpub_client is required for HD wallet refresh")
-        xpub = normalize_to_xpub(wallet.address)
         try:
-            summary = await self.xpub_client.get_xpub_summary(xpub)
+            summary = await self.xpub_client.get_xpub_summary(wallet.address)
         except Exception as exc:
             logger.warning("HD wallet balance fetch failed for %s: %s", wallet.tag, exc)
             return None
@@ -285,8 +282,7 @@ class RefreshService:
         Called from the full refresh loop; uses the shared db session.
         Raises on API failure (caught by fetch_one).
         """
-        xpub = normalize_to_xpub(wallet.address)
-        summary = await self.xpub_client.get_xpub_summary(xpub)
+        summary = await self.xpub_client.get_xpub_summary(wallet.address)
 
         now = datetime.now(timezone.utc)
         addr_entries = [
