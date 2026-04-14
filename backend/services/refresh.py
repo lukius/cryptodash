@@ -77,6 +77,20 @@ class RefreshService:
 
                 await db.commit()
 
+            # Run incremental syncs sequentially *after* the outer session commits.
+            # Running them concurrently (or while the outer session holds a write lock)
+            # causes SQLite "database is locked" errors under concurrent write pressure.
+            for wallet in wallets:
+                try:
+                    if wallet.wallet_type == "hd":
+                        await self.history_service.incremental_sync_hd(wallet)
+                    else:
+                        await self.history_service.incremental_sync(wallet)
+                except Exception as sync_exc:
+                    logger.warning(
+                        "Incremental sync failed for %s: %s", wallet.tag, sync_exc
+                    )
+
             success_count = sum(1 for r in wallet_results if r["success"])
             failure_count = sum(1 for r in wallet_results if not r["success"])
             errors = [
@@ -248,22 +262,6 @@ class RefreshService:
                     )
                     snap_repo = BalanceSnapshotRepository(db)
                     await snap_repo.create(snap)
-
-                    try:
-                        # History sync runs after the balance snapshot and derived
-                        # addresses are written to the shared session.  The outer
-                        # run_full_refresh() commits that session after all wallets
-                        # finish; incremental_sync / incremental_sync_hd open their
-                        # own sessions internally — the same two-phase pattern used
-                        # for individual wallets.
-                        if wallet.wallet_type == "hd":
-                            await self.history_service.incremental_sync_hd(wallet)
-                        else:
-                            await self.history_service.incremental_sync(wallet)
-                    except Exception as sync_exc:
-                        logger.warning(
-                            "Incremental sync failed for %s: %s", wallet.tag, sync_exc
-                        )
 
                     return {"wallet_id": wallet.id, "success": True, "error": None}
                 except Exception as exc:

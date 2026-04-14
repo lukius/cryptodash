@@ -92,39 +92,40 @@ class XpubClient(BaseClient):
         return all_txs
 
     async def get_transactions_for_addresses(
-        self, wallet_addrs: set[str]
+        self,
+        wallet_addrs: set[str],
+        after_timestamp: int | None = None,
     ) -> list[XpubTransaction]:
         """Fetch and build transactions for a pre-known set of wallet addresses.
 
         Skips the gap-limit scan. Used by history import after refresh has
         already discovered and stored the active address set in the DB.
+        Optional after_timestamp filters to transactions newer than that Unix epoch.
         """
         stubs = [
             DerivedAddressData(address=addr, balance_sat=0, n_tx=1)
             for addr in wallet_addrs
         ]
-        return await self._fetch_and_build_txs(stubs)
+        return await self._fetch_and_build_txs(stubs, after_timestamp)
 
     async def _scan_active_addresses(self, key: str) -> list[DerivedAddressData]:
         """Discover all active derived addresses using the BIP44 gap limit.
 
-        Scans both external (chain=0) and change (chain=1) chains.
+        Scans external (chain=0) and change (chain=1) chains in parallel.
         Stops when GAP_LIMIT consecutive unused addresses are encountered.
         Returns all addresses with n_tx > 0.
         """
         semaphore = asyncio.Semaphore(self._CONCURRENCY)
-        active: list[DerivedAddressData] = []
 
-        for chain in (0, 1):
+        async def scan_chain(chain: int) -> list[DerivedAddressData]:
+            chain_active: list[DerivedAddressData] = []
             index = 0
             while True:
-                # Derive a batch of GAP_LIMIT addresses
                 batch_addrs = [
                     derive_address_at(key, chain, index + i)
                     for i in range(self.GAP_LIMIT)
                 ]
 
-                # Query all in parallel
                 results = await asyncio.gather(
                     *[self._query_address(addr, semaphore) for addr in batch_addrs]
                 )
@@ -135,7 +136,7 @@ class XpubClient(BaseClient):
                     if tx_count > 0:
                         funded = info["chain_stats"]["funded_txo_sum"]
                         spent = info["chain_stats"]["spent_txo_sum"]
-                        active.append(
+                        chain_active.append(
                             DerivedAddressData(
                                 address=addr,
                                 balance_sat=funded - spent,
@@ -148,13 +149,13 @@ class XpubClient(BaseClient):
 
                 index += self.GAP_LIMIT
 
-                # Stop if the entire batch was unused
                 if gap >= self.GAP_LIMIT:
                     break
 
-                await asyncio.sleep(0.1)
+            return chain_active
 
-        return active
+        results = await asyncio.gather(scan_chain(0), scan_chain(1))
+        return [addr for chain_result in results for addr in chain_result]
 
     async def _query_address(self, address: str, semaphore: asyncio.Semaphore) -> dict:
         """Query /address/{addr} with concurrency limiting."""

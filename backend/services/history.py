@@ -400,7 +400,22 @@ class HistoryService:
         if ts_dt.tzinfo is None:
             ts_dt = ts_dt.replace(tzinfo=timezone.utc)
         after_ts = int(ts_dt.timestamp())
-        new_txs = await self.xpub_client.get_xpub_transactions_since(wallet.address, after_ts)
+
+        # Use pre-stored derived addresses when available to skip a redundant
+        # gap-limit scan — _get_hd_balance already discovered them this cycle.
+        from backend.repositories.derived_address import DerivedAddressRepository
+
+        derived_repo = DerivedAddressRepository(db)
+        da_rows = await derived_repo.get_by_wallet(wallet.id)
+        if da_rows:
+            wallet_addr_set = {row.address for row in da_rows}
+            new_txs = await self.xpub_client.get_transactions_for_addresses(
+                wallet_addr_set, after_timestamp=after_ts
+            )
+        else:
+            new_txs = await self.xpub_client.get_xpub_transactions_since(
+                wallet.address, after_ts
+            )
 
         if not new_txs:
             return 0
