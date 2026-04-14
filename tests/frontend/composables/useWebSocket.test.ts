@@ -184,7 +184,7 @@ describe("useWebSocket", () => {
     expect(mockFetchPriceHistory).not.toHaveBeenCalled();
   });
 
-  it("dispatches wallet:added → calls wallets.fetchWallets", async () => {
+  it("dispatches wallet:added → calls fetchWallets, fetchSummary, and fetchComposition", async () => {
     const useWebSocket = await importComposable();
     const ws = useWebSocket();
     ws.connect();
@@ -197,9 +197,11 @@ describe("useWebSocket", () => {
     });
 
     expect(mockFetchWallets).toHaveBeenCalled();
+    expect(mockFetchSummary).toHaveBeenCalled();
+    expect(mockFetchComposition).toHaveBeenCalled();
   });
 
-  it("dispatches wallet:removed → calls wallets.fetchWallets", async () => {
+  it("dispatches wallet:removed → calls fetchWallets, fetchSummary, and fetchComposition", async () => {
     const useWebSocket = await importComposable();
     const ws = useWebSocket();
     ws.connect();
@@ -212,9 +214,11 @@ describe("useWebSocket", () => {
     });
 
     expect(mockFetchWallets).toHaveBeenCalled();
+    expect(mockFetchSummary).toHaveBeenCalled();
+    expect(mockFetchComposition).toHaveBeenCalled();
   });
 
-  it("dispatches wallet:updated → calls wallets.fetchWallets", async () => {
+  it("dispatches wallet:updated → calls fetchWallets, fetchSummary, and fetchComposition", async () => {
     const useWebSocket = await importComposable();
     const ws = useWebSocket();
     ws.connect();
@@ -227,6 +231,8 @@ describe("useWebSocket", () => {
     });
 
     expect(mockFetchWallets).toHaveBeenCalled();
+    expect(mockFetchSummary).toHaveBeenCalled();
+    expect(mockFetchComposition).toHaveBeenCalled();
   });
 
   it("dispatches wallet:history:progress → updates wallet history_status in store", async () => {

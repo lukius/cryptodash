@@ -57,6 +57,8 @@ function dispatchEvent(event: WebSocketEvent) {
     case "wallet:removed":
     case "wallet:updated":
       void wallets.fetchWallets();
+      void dashboard.fetchSummary();
+      void dashboard.fetchComposition();
       break;
 
     case "wallet:history:progress": {
