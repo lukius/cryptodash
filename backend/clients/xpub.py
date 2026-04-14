@@ -91,6 +91,32 @@ class XpubClient(BaseClient):
         all_txs = await self._fetch_and_build_txs(active_addrs, after_timestamp)
         return all_txs
 
+    async def get_balance_for_addresses(
+        self, addresses: list[str]
+    ) -> tuple[Decimal, list[DerivedAddressData]]:
+        """Fetch current balances for a pre-known list of addresses. No gap-limit scan.
+
+        Used by the quick-refresh path when the active address set is already
+        cached in the DB and the full gap-limit scan TTL has not expired.
+        Returns (total_balance_btc, list of DerivedAddressData with balance > 0).
+        """
+        semaphore = asyncio.Semaphore(self._CONCURRENCY)
+        results = await asyncio.gather(
+            *[self._query_address(addr, semaphore) for addr in addresses]
+        )
+        active: list[DerivedAddressData] = []
+        for addr, info in zip(addresses, results, strict=True):
+            funded = info["chain_stats"]["funded_txo_sum"]
+            spent = info["chain_stats"]["spent_txo_sum"]
+            balance_sat = funded - spent
+            n_tx = info["chain_stats"]["tx_count"]
+            active.append(
+                DerivedAddressData(address=addr, balance_sat=balance_sat, n_tx=n_tx)
+            )
+        positive = [a for a in active if a.balance_sat > 0]
+        total_sat = sum(a.balance_sat for a in positive)
+        return Decimal(total_sat) / SATOSHI, positive
+
     async def get_transactions_for_addresses(
         self,
         wallet_addrs: set[str],

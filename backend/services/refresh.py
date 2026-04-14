@@ -21,6 +21,7 @@ from backend.repositories.wallet import WalletRepository
 logger = logging.getLogger(__name__)
 
 _MAX_CONCURRENT = 5
+_HD_SCAN_TTL_SECONDS = 1800  # full gap-limit scan at most once every 30 min
 
 
 @dataclass
@@ -277,9 +278,42 @@ class RefreshService:
     async def _get_hd_balance(self, wallet: Wallet, db: AsyncSession) -> Decimal:
         """Fetch balance for an HD wallet and update the derived address cache.
 
+        Uses a TTL to avoid running the expensive gap-limit scan on every refresh.
+        If the cached address set is recent (< _HD_SCAN_TTL_SECONDS), only re-queries
+        the known active addresses (quick path: ~5-10 calls instead of ~40).
+        If the cache is stale or missing, runs a full gap-limit scan.
+
         Called from the full refresh loop; uses the shared db session.
         Raises on API failure (caught by fetch_one).
         """
+        derived_repo = DerivedAddressRepository(db)
+        da_rows = await derived_repo.get_by_wallet(wallet.id)
+
+        if da_rows:
+            scan_time = da_rows[0].last_updated_at
+            if scan_time.tzinfo is None:
+                scan_time = scan_time.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - scan_time).total_seconds()
+
+            if age < _HD_SCAN_TTL_SECONDS:
+                # Quick path: re-check known addresses only, preserve scan timestamp
+                addresses = [row.address for row in da_rows]
+                balance_btc, fresh_addrs = await self.xpub_client.get_balance_for_addresses(addresses)
+                addr_entries = [
+                    {
+                        "address": a.address,
+                        "balance_btc": Decimal(a.balance_sat) / SATOSHI,
+                        "balance_sat": a.balance_sat,
+                    }
+                    for a in fresh_addrs
+                ]
+                # Pass original scan_time so TTL keeps ticking from the last full scan
+                await derived_repo.replace_all(
+                    wallet_id=wallet.id, addresses=addr_entries, updated_at=scan_time
+                )
+                return balance_btc
+
+        # Full scan path (cache missing or stale)
         summary = await self.xpub_client.get_xpub_summary(wallet.address)
 
         now = datetime.now(timezone.utc)
@@ -292,7 +326,6 @@ class RefreshService:
             for a in summary.derived_addresses
         ]
 
-        derived_repo = DerivedAddressRepository(db)
         total_count = await derived_repo.replace_all(
             wallet_id=wallet.id,
             addresses=addr_entries,
