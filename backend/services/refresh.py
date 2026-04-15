@@ -278,14 +278,30 @@ class RefreshService:
     async def _get_hd_balance(self, wallet: Wallet, db: AsyncSession) -> Decimal:
         """Fetch balance for an HD wallet and update the derived address cache.
 
-        Uses a TTL to avoid running the expensive gap-limit scan on every refresh.
-        If the cached address set is recent (< _HD_SCAN_TTL_SECONDS), only re-queries
-        the known active addresses (quick path: ~5-10 calls instead of ~40).
-        If the cache is stale or missing, runs a full gap-limit scan.
+        First checks the Bitcoin chain tip height (1 API call). If the tip has not
+        advanced since the last complete refresh, returns the cached balance with no
+        further API calls — balance cannot have changed if no new block was mined.
+
+        When the tip has advanced, uses a TTL to decide between a quick re-check of
+        known addresses (~5-10 calls) and a full gap-limit scan (~40 calls).
 
         Called from the full refresh loop; uses the shared db session.
         Raises on API failure (caught by fetch_one).
         """
+        config_repo = ConfigRepository(db)
+        tip_key = f"hd_tip_height:{wallet.id}"
+
+        current_tip = await self.xpub_client.get_tip_height()
+        stored_tip = await config_repo.get_int(tip_key)
+
+        if stored_tip is not None and stored_tip == current_tip:
+            # No new block: balance cannot have changed. Return cached value.
+            snap_repo = BalanceSnapshotRepository(db)
+            last_snap = await snap_repo.get_latest_for_wallet(wallet.id)
+            if last_snap is not None:
+                logger.debug("HD wallet %s: tip unchanged (%d), using cached balance", wallet.tag, current_tip)
+                return Decimal(last_snap.balance)
+
         derived_repo = DerivedAddressRepository(db)
         da_rows = await derived_repo.get_by_wallet(wallet.id)
 
@@ -333,7 +349,6 @@ class RefreshService:
         )
 
         if total_count > 200:
-            config_repo = ConfigRepository(db)
             await config_repo.set(f"hd_address_count:{wallet.id}", str(total_count))
 
         return summary.balance_btc

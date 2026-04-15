@@ -52,6 +52,10 @@ class XpubClient(BaseClient):
     def __init__(self):
         super().__init__(base_url="https://mempool.space/api", timeout=30.0)
 
+    async def get_tip_height(self) -> int:
+        """Return the current Bitcoin chain tip block height. One API call."""
+        return await self._get_with_retry("/blocks/tip/height")
+
     async def get_xpub_summary(self, key: str) -> XpubSummary:
         """Fetch aggregate balance and active derived address list.
 
