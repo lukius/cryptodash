@@ -289,10 +289,10 @@ class RefreshService:
         Raises on API failure (caught by fetch_one).
         """
         config_repo = ConfigRepository(db)
-        tip_key = f"hd_tip_height:{wallet.id}"
+        bal_tip_key = f"hd_bal_tip:{wallet.id}"
 
         current_tip = await self.xpub_client.get_tip_height()
-        stored_tip = await config_repo.get_int(tip_key)
+        stored_tip = await config_repo.get_int(bal_tip_key)
 
         if stored_tip is not None and stored_tip == current_tip:
             # No new block: balance cannot have changed. Return cached value.
@@ -327,6 +327,7 @@ class RefreshService:
                 await derived_repo.replace_all(
                     wallet_id=wallet.id, addresses=addr_entries, updated_at=scan_time
                 )
+                await config_repo.set(bal_tip_key, str(current_tip))
                 return balance_btc
 
         # Full scan path (cache missing or stale)
@@ -351,6 +352,7 @@ class RefreshService:
         if total_count > 200:
             await config_repo.set(f"hd_address_count:{wallet.id}", str(total_count))
 
+        await config_repo.set(bal_tip_key, str(current_tip))
         return summary.balance_btc
 
     async def _get_balance(self, wallet: Wallet) -> Decimal:

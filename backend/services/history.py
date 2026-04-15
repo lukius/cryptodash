@@ -396,10 +396,10 @@ class HistoryService:
         from backend.repositories.derived_address import DerivedAddressRepository
 
         config_repo = ConfigRepository(db)
-        tip_key = f"hd_tip_height:{wallet.id}"
+        sync_tip_key = f"hd_sync_tip:{wallet.id}"
 
         current_tip = await self.xpub_client.get_tip_height()
-        stored_tip = await config_repo.get_int(tip_key)
+        stored_tip = await config_repo.get_int(sync_tip_key)
 
         if stored_tip is not None and stored_tip == current_tip:
             logger.debug("HD wallet %s: tip unchanged (%d), skipping sync", wallet.tag, current_tip)
@@ -412,7 +412,7 @@ class HistoryService:
         if last_tx is None:
             # No stored transactions — full_import_hd handles the initial load.
             # Still update tip so subsequent refreshes skip correctly.
-            await config_repo.set(tip_key, str(current_tip))
+            await config_repo.set(sync_tip_key, str(current_tip))
             await db.commit()
             return 0
 
@@ -465,7 +465,7 @@ class HistoryService:
             await self._batch_insert_transactions(db, records)
 
         # Record current tip: future refreshes skip until the next block
-        await config_repo.set(tip_key, str(current_tip))
+        await config_repo.set(sync_tip_key, str(current_tip))
         await db.commit()
 
         return len(records)

@@ -11,11 +11,16 @@ Address types derived based on key prefix:
 """
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
+import httpx
+
 from backend.clients.base import BaseClient
 from backend.clients.hd_derive import derive_address_at
+
+logger = logging.getLogger(__name__)
 
 SATOSHI = Decimal("100000000")  # 1 BTC = 10^8 satoshis
 
@@ -283,7 +288,13 @@ class XpubClient(BaseClient):
             if after_txid:
                 path += f"/{after_txid}"
 
-            page: list = await self._get(path)
+            try:
+                page: list = await self._get(path)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429:
+                    logger.warning("Rate limited fetching txs for %s; skipping this address this cycle", address)
+                    return all_txs
+                raise
 
             if not page:
                 break
