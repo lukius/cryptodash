@@ -361,4 +361,49 @@ describe("useWalletsStore", () => {
     );
     expect(store.error).toBe("Wallet not found.");
   });
+
+  // ---- onWalletRefreshed ----
+
+  it("onWalletRefreshed() updates balance and last_updated in place", () => {
+    const store = useWalletsStore();
+    store.wallets = [
+      makeWallet({ id: "w1", balance: "1.0", last_updated: "old" }),
+      makeWallet({ id: "w2", balance: "2.0", last_updated: "old" }),
+    ] as never[];
+
+    store.onWalletRefreshed("w1", "1.5", "2026-04-25T22:00:00Z");
+
+    expect(store.wallets[0].balance).toBe("1.5");
+    expect(store.wallets[0].last_updated).toBe("2026-04-25T22:00:00Z");
+    // The other wallet is untouched
+    expect(store.wallets[1].balance).toBe("2.0");
+    expect(store.wallets[1].last_updated).toBe("old");
+  });
+
+  it("onWalletRefreshed() preserves unrelated fields like tag and history_status", () => {
+    const store = useWalletsStore();
+    store.wallets = [
+      makeWallet({
+        id: "w1",
+        tag: "My Wallet",
+        history_status: "complete",
+        balance: "1.0",
+      }),
+    ] as never[];
+
+    store.onWalletRefreshed("w1", "1.5", "2026-04-25T22:00:00Z");
+
+    expect(store.wallets[0].tag).toBe("My Wallet");
+    expect(store.wallets[0].history_status).toBe("complete");
+    expect(store.wallets[0].balance).toBe("1.5");
+  });
+
+  it("onWalletRefreshed() is a no-op when wallet id is unknown", () => {
+    const store = useWalletsStore();
+    store.wallets = [makeWallet({ id: "w1", balance: "1.0" })] as never[];
+
+    store.onWalletRefreshed("missing", "999", "2026-04-25T22:00:00Z");
+
+    expect(store.wallets[0].balance).toBe("1.0");
+  });
 });

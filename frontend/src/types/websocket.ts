@@ -38,6 +38,18 @@ export interface WalletUpdated {
   timestamp: string;
 }
 
+export interface WalletRefreshed {
+  event: "wallet:refreshed";
+  data: {
+    wallet_id: string;
+    balance?: string;
+    timestamp?: string;
+    success: boolean;
+    error?: string;
+  };
+  timestamp: string;
+}
+
 export interface WalletHistoryProgress {
   event: "wallet:history:progress";
   data: {
@@ -72,6 +84,7 @@ export type WebSocketEvent =
   | WalletAdded
   | WalletRemoved
   | WalletUpdated
+  | WalletRefreshed
   | WalletHistoryProgress
   | WalletHistoryCompleted
   | SettingsUpdated;

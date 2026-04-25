@@ -8,6 +8,7 @@ const mockFetchPortfolioHistory = vi.fn().mockResolvedValue(undefined);
 const mockFetchPriceHistory = vi.fn().mockResolvedValue(undefined);
 const mockFetchWallets = vi.fn().mockResolvedValue(undefined);
 const mockFetchSettings = vi.fn().mockResolvedValue(undefined);
+const mockOnWalletRefreshed = vi.fn();
 
 const mockDashboard = {
   isRefreshing: false,
@@ -22,6 +23,7 @@ const mockDashboard = {
 const mockWallets = {
   wallets: [] as Array<{ id: string; history_status: string }>,
   fetchWallets: mockFetchWallets,
+  onWalletRefreshed: mockOnWalletRefreshed,
 };
 
 const mockSettings = {
@@ -234,6 +236,51 @@ describe("useWebSocket", () => {
     expect(mockFetchWallets).toHaveBeenCalled();
     expect(mockFetchSummary).toHaveBeenCalled();
     expect(mockFetchComposition).toHaveBeenCalled();
+  });
+
+  it("dispatches wallet:refreshed (success) → updates the wallet in place without re-fetching the list", async () => {
+    const useWebSocket = await importComposable();
+    const ws = useWebSocket();
+    ws.connect();
+    MockWebSocket.instances[0].simulateOpen();
+
+    MockWebSocket.instances[0].simulateMessage({
+      event: "wallet:refreshed",
+      data: {
+        wallet_id: "wallet-abc",
+        balance: "0.5",
+        timestamp: "2026-04-25T22:00:00Z",
+        success: true,
+      },
+      timestamp: "2026-04-25T22:00:00Z",
+    });
+
+    expect(mockOnWalletRefreshed).toHaveBeenCalledWith(
+      "wallet-abc",
+      "0.5",
+      "2026-04-25T22:00:00Z",
+    );
+    // Streaming updates must not roundtrip the full wallet list per event.
+    expect(mockFetchWallets).not.toHaveBeenCalled();
+  });
+
+  it("dispatches wallet:refreshed (failure) → does not update the store", async () => {
+    const useWebSocket = await importComposable();
+    const ws = useWebSocket();
+    ws.connect();
+    MockWebSocket.instances[0].simulateOpen();
+
+    MockWebSocket.instances[0].simulateMessage({
+      event: "wallet:refreshed",
+      data: {
+        wallet_id: "wallet-abc",
+        success: false,
+        error: "API timeout",
+      },
+      timestamp: "2026-04-25T22:00:00Z",
+    });
+
+    expect(mockOnWalletRefreshed).not.toHaveBeenCalled();
   });
 
   it("dispatches wallet:history:progress → updates wallet history_status in store", async () => {

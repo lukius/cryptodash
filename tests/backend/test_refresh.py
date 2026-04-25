@@ -488,6 +488,198 @@ async def test_refresh_broadcasts_events(session_factory):
     assert "refresh:completed" in events
 
 
+# ---------------------------------------------------------------------------
+# Streaming `wallet:refreshed` events — one per wallet
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_emits_wallet_refreshed_per_wallet(
+    session_factory, db_session, btc_wallet, kas_wallet
+):
+    """Each wallet should emit a `wallet:refreshed` event with its balance."""
+    db_session.add(btc_wallet)
+    db_session.add(kas_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+
+    await service.run_full_refresh()
+
+    refreshed = [
+        call.args
+        for call in ws_manager.broadcast.call_args_list
+        if call.args[0] == "wallet:refreshed"
+    ]
+    assert len(refreshed) == 2
+
+    payloads_by_id = {payload["wallet_id"]: payload for _, payload in refreshed}
+    assert btc_wallet.id in payloads_by_id
+    assert kas_wallet.id in payloads_by_id
+    btc_payload = payloads_by_id[btc_wallet.id]
+    assert btc_payload["success"] is True
+    assert btc_payload["balance"] == "0.5"
+    assert "timestamp" in btc_payload
+    kas_payload = payloads_by_id[kas_wallet.id]
+    assert kas_payload["success"] is True
+    assert kas_payload["balance"] == "1000"
+
+
+@pytest.mark.asyncio
+async def test_wallet_refreshed_fires_before_refresh_completed(
+    session_factory, db_session, btc_wallet, kas_wallet
+):
+    """All `wallet:refreshed` events must precede `refresh:completed`."""
+    db_session.add(btc_wallet)
+    db_session.add(kas_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+
+    await service.run_full_refresh()
+
+    events = [call.args[0] for call in ws_manager.broadcast.call_args_list]
+    last_refreshed = max(
+        i for i, ev in enumerate(events) if ev == "wallet:refreshed"
+    )
+    completed_idx = events.index("refresh:completed")
+    assert last_refreshed < completed_idx
+
+
+@pytest.mark.asyncio
+async def test_wallet_refreshed_emits_failure_payload(
+    session_factory, db_session, btc_wallet, kas_wallet
+):
+    """A wallet whose fetch fails should still emit `wallet:refreshed`
+    with success=False and an error message."""
+    db_session.add(btc_wallet)
+    db_session.add(kas_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    btc_client.get_balance = AsyncMock(side_effect=Exception("BTC API down"))
+
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+    await service.run_full_refresh()
+
+    refreshed = [
+        call.args[1]
+        for call in ws_manager.broadcast.call_args_list
+        if call.args[0] == "wallet:refreshed"
+    ]
+    assert len(refreshed) == 2
+
+    by_id = {p["wallet_id"]: p for p in refreshed}
+    assert by_id[btc_wallet.id]["success"] is False
+    assert "BTC API down" in by_id[btc_wallet.id]["error"]
+    # The other wallet's stream is untouched by the failure
+    assert by_id[kas_wallet.id]["success"] is True
+    assert by_id[kas_wallet.id]["balance"] == "1000"
+
+
+@pytest.mark.asyncio
+async def test_failed_wallet_does_not_block_others_commit(
+    session_factory, db_session, btc_wallet, kas_wallet
+):
+    """A failure on one wallet must not prevent the other's BalanceSnapshot
+    from landing in the DB — per-wallet sessions commit independently."""
+    from sqlalchemy import select
+
+    from backend.models.balance_snapshot import BalanceSnapshot
+
+    db_session.add(btc_wallet)
+    db_session.add(kas_wallet)
+    await db_session.commit()
+
+    (
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    ) = make_mock_clients()
+    btc_client.get_balance = AsyncMock(side_effect=Exception("BTC API down"))
+
+    service = make_refresh_service(
+        session_factory,
+        btc_client,
+        kas_client,
+        coingecko_client,
+        ws_manager,
+        history_service,
+        xpub_client,
+    )
+    await service.run_full_refresh()
+
+    async with session_factory() as s:
+        kas_snaps = (
+            await s.execute(
+                select(BalanceSnapshot).where(
+                    BalanceSnapshot.wallet_id == kas_wallet.id
+                )
+            )
+        ).scalars().all()
+        btc_snaps = (
+            await s.execute(
+                select(BalanceSnapshot).where(
+                    BalanceSnapshot.wallet_id == btc_wallet.id
+                )
+            )
+        ).scalars().all()
+
+    assert len(kas_snaps) == 1
+    assert Decimal(kas_snaps[0].balance) == Decimal("1000")
+    assert btc_snaps == []
+
+
 @pytest.mark.asyncio
 async def test_refresh_single_wallet_no_lock(session_factory, db_session, btc_wallet):
     """refresh_single_wallet should not acquire the lock and should return a BalanceSnapshot."""

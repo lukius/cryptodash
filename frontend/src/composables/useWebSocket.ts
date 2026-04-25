@@ -63,6 +63,16 @@ function dispatchEvent(event: WebSocketEvent) {
       void dashboard.fetchComposition();
       break;
 
+    case "wallet:refreshed":
+      if (event.data.success) {
+        wallets.onWalletRefreshed(
+          event.data.wallet_id,
+          event.data.balance ?? null,
+          event.data.timestamp ?? null,
+        );
+      }
+      break;
+
     case "wallet:history:progress": {
       const idx = wallets.wallets.findIndex(
         (w) => w.id === event.data.wallet_id,

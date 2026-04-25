@@ -67,19 +67,20 @@ class RefreshService:
         try:
             await self.ws_manager.broadcast("refresh:started", {})
 
+            # Prices + wallet listing in their own short session so the per-wallet
+            # refresh tasks below don't share a session — each one commits and
+            # broadcasts a `wallet:refreshed` event independently for streaming UX.
             async with self._session_factory() as db:
                 await self._fetch_prices(db)
-
                 wallet_repo = WalletRepository(db)
                 wallets = await wallet_repo.get_all()
-
-                wallet_results = await self._fetch_all_wallets(db, wallets)
-
                 await db.commit()
 
-            # Run incremental syncs sequentially *after* the outer session commits.
-            # Running them concurrently (or while the outer session holds a write lock)
-            # causes SQLite "database is locked" errors under concurrent write pressure.
+            wallet_results = await self._fetch_all_wallets(wallets)
+
+            # Run incremental syncs sequentially after the per-wallet refreshes finish.
+            # Running them concurrently causes SQLite "database is locked" errors
+            # under concurrent write pressure.
             for wallet in wallets:
                 try:
                     if wallet.wallet_type == "hd":
@@ -239,33 +240,56 @@ class RefreshService:
 
         return prices
 
-    async def _fetch_all_wallets(
-        self, db: AsyncSession, wallets: list[Wallet]
-    ) -> list[dict]:
-        """Fetch balances for all wallets (individual and HD) in parallel."""
+    async def _fetch_all_wallets(self, wallets: list[Wallet]) -> list[dict]:
+        """Fetch balances for all wallets in parallel, streaming a
+        ``wallet:refreshed`` event as each one finishes.
+
+        Each wallet uses its own session and commits independently, so a single
+        wallet's API failure doesn't block the others' fresh data from landing.
+        """
         semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
         async def fetch_one(wallet: Wallet) -> dict:
             async with semaphore:
                 try:
-                    if wallet.wallet_type == "hd":
-                        balance = await self._get_hd_balance(wallet, db)
-                    else:
-                        balance = await self._get_balance(wallet)
+                    async with self._session_factory() as db:
+                        if wallet.wallet_type == "hd":
+                            balance = await self._get_hd_balance(wallet, db)
+                        else:
+                            balance = await self._get_balance(wallet)
 
-                    snap = BalanceSnapshot(
-                        id=str(uuid4()),
-                        wallet_id=wallet.id,
-                        balance=str(balance),
-                        timestamp=datetime.now(timezone.utc),
-                        source="live",
+                        now = datetime.now(timezone.utc)
+                        snap = BalanceSnapshot(
+                            id=str(uuid4()),
+                            wallet_id=wallet.id,
+                            balance=str(balance),
+                            timestamp=now,
+                            source="live",
+                        )
+                        snap_repo = BalanceSnapshotRepository(db)
+                        await snap_repo.create(snap)
+                        await db.commit()
+
+                    await self.ws_manager.broadcast(
+                        "wallet:refreshed",
+                        {
+                            "wallet_id": wallet.id,
+                            "balance": str(balance),
+                            "timestamp": now.isoformat(),
+                            "success": True,
+                        },
                     )
-                    snap_repo = BalanceSnapshotRepository(db)
-                    await snap_repo.create(snap)
-
                     return {"wallet_id": wallet.id, "success": True, "error": None}
                 except Exception as exc:
                     logger.warning("Balance fetch failed for %s: %s", wallet.tag, exc)
+                    await self.ws_manager.broadcast(
+                        "wallet:refreshed",
+                        {
+                            "wallet_id": wallet.id,
+                            "success": False,
+                            "error": str(exc),
+                        },
+                    )
                     return {
                         "wallet_id": wallet.id,
                         "success": False,

@@ -136,6 +136,21 @@ export const useWalletsStore = defineStore("wallets", () => {
     }
   }
 
+  function onWalletRefreshed(
+    walletId: string,
+    balance: string | null,
+    timestamp: string | null,
+  ): void {
+    const idx = wallets.value.findIndex((w) => w.id === walletId);
+    if (idx === -1) return;
+    const current = wallets.value[idx];
+    wallets.value[idx] = {
+      ...current,
+      balance: balance ?? current.balance,
+      last_updated: timestamp ?? current.last_updated,
+    };
+  }
+
   return {
     wallets,
     isLoading,
@@ -157,5 +172,6 @@ export const useWalletsStore = defineStore("wallets", () => {
     onWalletAdded,
     onWalletRemoved,
     onWalletUpdated,
+    onWalletRefreshed,
   };
 });
