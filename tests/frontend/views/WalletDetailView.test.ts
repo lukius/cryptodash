@@ -40,9 +40,35 @@ import { useApi } from "@/composables/useApi";
 import { useWalletsStore } from "@/stores/wallets";
 import WalletDetailView from "@/views/WalletDetailView.vue";
 
+function makeTransactionPage(overrides: Record<string, unknown> = {}) {
+  return {
+    transactions: [],
+    total: 0,
+    page: 1,
+    page_size: 50,
+    total_pages: 1,
+    ...overrides,
+  };
+}
+
+function makeTx(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "tx-1",
+    tx_hash: "abc123def456",
+    amount: "0.001",
+    balance_after: "1.001",
+    block_height: 800000,
+    timestamp: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
 function makeApi(overrides: Record<string, unknown> = {}) {
   return {
-    get: vi.fn().mockResolvedValue([]),
+    get: vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/history")) return Promise.resolve({ data_points: [], snapshots: [] });
+      return Promise.resolve(makeTransactionPage());
+    }),
     post: vi.fn(),
     patch: vi.fn(),
     put: vi.fn(),
@@ -240,5 +266,134 @@ describe("WalletDetailView — address display", () => {
     const addressEl = wrapper.find(".wallet-address");
     expect(addressEl.exists()).toBe(true);
     expect(addressEl.text()).toBe("bc1qar0s...wf5mdq");
+  });
+});
+
+describe("WalletDetailView — pagination scroll fix", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    mockPush.mockClear();
+  });
+
+  it("shows loading message on initial load (txPageChanging is false)", async () => {
+    let resolveInitial!: (v: ReturnType<typeof makeTransactionPage>) => void;
+    const pending = new Promise<ReturnType<typeof makeTransactionPage>>((res) => { resolveInitial = res; });
+
+    const api = {
+      ...makeApi(),
+      get: vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/transactions")) return pending;
+        return Promise.resolve({ data_points: [] });
+      }),
+    };
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useWalletsStore();
+    store.wallets = [makeIndividualWallet()];
+
+    const wrapper = mount(WalletDetailView);
+    await vi.waitFor(() => expect(wrapper.find(".tx-empty").exists()).toBe(true));
+
+    expect(wrapper.find(".tx-empty").text()).toContain("Loading");
+    expect(wrapper.find(".tx-table").exists()).toBe(false);
+
+    resolveInitial(makeTransactionPage());
+    await flushPromises();
+  });
+
+  it("table stays visible with tx-table-loading class during page navigation", async () => {
+    let txCallCount = 0;
+    let resolveNav!: (v: ReturnType<typeof makeTransactionPage>) => void;
+
+    const api = {
+      ...makeApi(),
+      get: vi.fn().mockImplementation((url: string) => {
+        if (!url.includes("/transactions")) return Promise.resolve({ data_points: [] });
+        txCallCount++;
+        if (txCallCount === 1) {
+          return Promise.resolve(makeTransactionPage({
+            transactions: [makeTx()],
+            total: 20,
+            page: 1,
+            page_size: 10,
+            total_pages: 2,
+          }));
+        }
+        return new Promise<ReturnType<typeof makeTransactionPage>>((res) => { resolveNav = res; });
+      }),
+    };
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useWalletsStore();
+    store.wallets = [makeIndividualWallet()];
+
+    const wrapper = mount(WalletDetailView);
+    await flushPromises();
+
+    // Table rendered after initial load
+    expect(wrapper.find(".tx-table").exists()).toBe(true);
+
+    // Click the next-page button (▶)
+    const nextBtn = wrapper.findAll(".nav-btn").find((b) => b.text() === "▶");
+    await nextBtn!.trigger("click");
+
+    // During navigation: table stays visible with loading class, no loading message
+    expect(wrapper.find(".tx-table").exists()).toBe(true);
+    expect(wrapper.find(".tx-table").classes()).toContain("tx-table-loading");
+    expect(wrapper.find(".tx-empty").exists()).toBe(false);
+
+    // Resolve navigation and verify clean state
+    resolveNav(makeTransactionPage({ transactions: [makeTx({ id: "tx-2" })], total: 20, page: 2, total_pages: 2 }));
+    await flushPromises();
+
+    expect(wrapper.find(".tx-table").exists()).toBe(true);
+    expect(wrapper.find(".tx-table").classes()).not.toContain("tx-table-loading");
+  });
+
+  it("table stays visible with loading class when changing page size", async () => {
+    let txCallCount = 0;
+    let resolveNav!: (v: ReturnType<typeof makeTransactionPage>) => void;
+
+    const api = {
+      ...makeApi(),
+      get: vi.fn().mockImplementation((url: string) => {
+        if (!url.includes("/transactions")) return Promise.resolve({ data_points: [] });
+        txCallCount++;
+        if (txCallCount === 1) {
+          return Promise.resolve(makeTransactionPage({
+            transactions: [makeTx()],
+            total: 5,
+            page: 1,
+            page_size: 50,
+            total_pages: 1,
+          }));
+        }
+        return new Promise<ReturnType<typeof makeTransactionPage>>((res) => { resolveNav = res; });
+      }),
+    };
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useWalletsStore();
+    store.wallets = [makeIndividualWallet()];
+
+    const wrapper = mount(WalletDetailView);
+    await flushPromises();
+
+    expect(wrapper.find(".tx-table").exists()).toBe(true);
+
+    // Click the "10" rows-per-page button
+    const tenBtn = wrapper.findAll(".page-size-btn").find((b) => b.text() === "10");
+    await tenBtn!.trigger("click");
+
+    // During size change: table still visible, loading class applied
+    expect(wrapper.find(".tx-table").exists()).toBe(true);
+    expect(wrapper.find(".tx-table").classes()).toContain("tx-table-loading");
+    expect(wrapper.find(".tx-empty").exists()).toBe(false);
+
+    resolveNav(makeTransactionPage({ transactions: [makeTx()], total: 5, page: 1, page_size: 10, total_pages: 1 }));
+    await flushPromises();
+
+    expect(wrapper.find(".tx-table").classes()).not.toContain("tx-table-loading");
   });
 });
