@@ -368,6 +368,31 @@ describe("AddWalletDialog", () => {
     expect(wrapper.text()).not.toContain("Extended public key");
   });
 
+  it("clears validation error while typing once address becomes valid (no blur needed)", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    // Blur with an invalid address to trigger the error state
+    await addressInput.setValue("1bad");
+    await addressInput.trigger("blur");
+    expect(wrapper.text()).toContain("Invalid Bitcoin address format");
+    // Type a valid address character-by-character (only @input, no blur)
+    await addressInput.setValue("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+    await addressInput.trigger("input");
+    // Error should clear immediately without requiring another blur
+    expect(wrapper.text()).not.toContain("Invalid Bitcoin address format");
+    expect(wrapper.find(".input-error").exists()).toBe(false);
+  });
+
+  it("does not show validation error while typing for the first time (before blur)", async () => {
+    const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
+    const addressInput = wrapper.find("textarea, [data-testid='address-input']");
+    // Type an invalid address but never blur
+    await addressInput.setValue("1bad");
+    await addressInput.trigger("input");
+    expect(wrapper.text()).not.toContain("Invalid Bitcoin address format");
+    expect(wrapper.find(".input-error").exists()).toBe(false);
+  });
+
   it("clears a prior validation error when a valid zpub is pasted", async () => {
     const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
     const addressInput = wrapper.find("textarea, [data-testid='address-input']");

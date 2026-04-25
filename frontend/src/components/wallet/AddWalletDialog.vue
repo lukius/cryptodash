@@ -81,6 +81,12 @@ async function onAddressPaste() {
   validateAddress();
 }
 
+function onAddressInput() {
+  if (hasCommitted.value) {
+    validateAddress();
+  }
+}
+
 function onAddressBlur() {
   if (address.value.trim()) {
     hasCommitted.value = true;
@@ -204,6 +210,7 @@ async function submit() {
           :placeholder="addressPlaceholder"
           rows="2"
           :class="{ 'input-error': addressError }"
+          @input="onAddressInput"
           @paste="onAddressPaste"
           @blur="onAddressBlur"
         />
