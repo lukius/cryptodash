@@ -33,6 +33,24 @@ class TransactionRepository:
         )
         return list(result.scalars().all())
 
+    async def list_by_wallet_paginated(
+        self, wallet_id: str, limit: int, offset: int
+    ) -> tuple[list[Transaction], int]:
+        count_result = await self.db.execute(
+            select(func.count())
+            .select_from(Transaction)
+            .where(Transaction.wallet_id == wallet_id)
+        )
+        total = count_result.scalar_one()
+        result = await self.db.execute(
+            select(Transaction)
+            .where(Transaction.wallet_id == wallet_id)
+            .order_by(Transaction.timestamp.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all()), total
+
     async def list_by_wallet_in_range(
         self, wallet_id: str, start: datetime, end: datetime
     ) -> list[Transaction]:

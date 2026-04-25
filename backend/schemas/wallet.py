@@ -52,3 +52,11 @@ class TransactionResponse(BaseModel):
     balance_after: str | None
     block_height: int | None
     timestamp: str
+
+
+class TransactionPage(BaseModel):
+    transactions: list[TransactionResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

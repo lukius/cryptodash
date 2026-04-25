@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import math
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.dependencies import (
@@ -19,6 +21,7 @@ from backend.repositories.transaction import TransactionRepository
 from backend.repositories.wallet import WalletRepository
 from backend.schemas.wallet import (
     DerivedAddressResponse,
+    TransactionPage,
     TransactionResponse,
     WalletCreate,
     WalletListResponse,
@@ -188,9 +191,11 @@ async def remove_wallet(
 @router.get("/{wallet_id}/transactions")
 async def list_transactions(
     wallet_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=10, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[TransactionResponse]:
+) -> TransactionPage:
     wallet_repo = WalletRepository(db)
     wallet = await wallet_repo.get_by_id(wallet_id, current_user.id)
     if wallet is None:
@@ -199,18 +204,26 @@ async def list_transactions(
             detail="Wallet not found.",
         )
     tx_repo = TransactionRepository(db)
-    transactions = await tx_repo.list_by_wallet(wallet_id)
-    return [
-        TransactionResponse(
-            id=tx.id,
-            tx_hash=tx.tx_hash,
-            amount=tx.amount,
-            balance_after=tx.balance_after,
-            block_height=tx.block_height,
-            timestamp=tx.timestamp.isoformat(),
-        )
-        for tx in transactions
-    ]
+    offset = (page - 1) * page_size
+    transactions, total = await tx_repo.list_by_wallet_paginated(wallet_id, page_size, offset)
+    total_pages = max(1, math.ceil(total / page_size))
+    return TransactionPage(
+        transactions=[
+            TransactionResponse(
+                id=tx.id,
+                tx_hash=tx.tx_hash,
+                amount=tx.amount,
+                balance_after=tx.balance_after,
+                block_height=tx.block_height,
+                timestamp=tx.timestamp.isoformat(),
+            )
+            for tx in transactions
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.post("/{wallet_id}/retry-history")

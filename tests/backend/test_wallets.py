@@ -1,5 +1,8 @@
 """Tests for wallet management — service and router (T07 ST6)."""
 
+import uuid
+from datetime import datetime, timezone
+
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
@@ -8,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from backend.core.dependencies import get_db
 from backend.database import init_db
+from backend.models.transaction import Transaction
 from backend.routers.auth import router as auth_router
 from backend.routers.wallets import router as wallets_router
 
@@ -55,6 +59,30 @@ async def wallet_client(fresh_engine):
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def wallet_client_with_db(fresh_engine):
+    """HTTP test client + exposed session factory for direct DB seeding."""
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    await init_db(engine=fresh_engine, session_factory=session_factory)
+
+    app = FastAPI()
+    app.include_router(auth_router)
+    app.include_router(wallets_router)
+
+    async def override_get_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        yield client, session_factory
 
 
 @pytest_asyncio.fixture
@@ -899,3 +927,183 @@ async def test_idor_remove_wallet_other_user_returns_not_found(fresh_engine):
 
         with _pytest.raises(WalletNotFoundError):
             await service.remove_wallet(wallet_a.id)
+
+
+# ---------------------------------------------------------------------------
+# GET /{wallet_id}/transactions — paginated
+# ---------------------------------------------------------------------------
+
+
+def _make_tx(wallet_id: str, tx_hash: str, minutes_offset: int = 0) -> Transaction:
+    now = datetime.now(timezone.utc)
+    from datetime import timedelta
+    return Transaction(
+        id=str(uuid.uuid4()),
+        wallet_id=wallet_id,
+        tx_hash=tx_hash,
+        amount="0.001",
+        balance_after=None,
+        block_height=800000,
+        timestamp=now + timedelta(minutes=minutes_offset),
+        created_at=now,
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_requires_auth(wallet_client):
+    resp = await wallet_client.get("/api/wallets/some-id/transactions")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_returns_404_for_unknown_wallet(wallet_client_with_db):
+    client, session_factory = wallet_client_with_db
+    resp = await client.post(
+        "/api/auth/setup",
+        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+    )
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.get("/api/wallets/nonexistent-id/transactions", headers=headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_paginated_response_shape(wallet_client_with_db):
+    client, session_factory = wallet_client_with_db
+    resp = await client.post(
+        "/api/auth/setup",
+        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+    )
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    wallet_resp = await add_wallet(client, headers, "BTC", VALID_BTC, "Test Wallet")
+    wallet_id = wallet_resp.json()["id"]
+
+    # Seed 15 transactions directly
+    async with session_factory() as db:
+        for i in range(15):
+            db.add(_make_tx(wallet_id, f"hash_{i:03d}", minutes_offset=i))
+        await db.commit()
+
+    resp = await client.get(
+        f"/api/wallets/{wallet_id}/transactions?page=1&page_size=10",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 15
+    assert data["page"] == 1
+    assert data["page_size"] == 10
+    assert data["total_pages"] == 2
+    assert len(data["transactions"]) == 10
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_paginated_second_page(wallet_client_with_db):
+    client, session_factory = wallet_client_with_db
+    resp = await client.post(
+        "/api/auth/setup",
+        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+    )
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    wallet_resp = await add_wallet(client, headers, "BTC", VALID_BTC, "Test Wallet")
+    wallet_id = wallet_resp.json()["id"]
+
+    async with session_factory() as db:
+        for i in range(15):
+            db.add(_make_tx(wallet_id, f"hash_{i:03d}", minutes_offset=i))
+        await db.commit()
+
+    resp = await client.get(
+        f"/api/wallets/{wallet_id}/transactions?page=2&page_size=10",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 15
+    assert data["page"] == 2
+    assert len(data["transactions"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_ordered_newest_first(wallet_client_with_db):
+    client, session_factory = wallet_client_with_db
+    resp = await client.post(
+        "/api/auth/setup",
+        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+    )
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    wallet_resp = await add_wallet(client, headers, "BTC", VALID_BTC, "Test Wallet")
+    wallet_id = wallet_resp.json()["id"]
+
+    async with session_factory() as db:
+        for i in range(3):
+            db.add(_make_tx(wallet_id, f"hash_{i}", minutes_offset=i))
+        await db.commit()
+
+    resp = await client.get(
+        f"/api/wallets/{wallet_id}/transactions?page=1&page_size=50",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    timestamps = [tx["timestamp"] for tx in resp.json()["transactions"]]
+    assert timestamps == sorted(timestamps, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_empty_wallet(wallet_client_with_db):
+    client, session_factory = wallet_client_with_db
+    resp = await client.post(
+        "/api/auth/setup",
+        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+    )
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    wallet_resp = await add_wallet(client, headers, "BTC", VALID_BTC)
+    wallet_id = wallet_resp.json()["id"]
+
+    resp = await client.get(
+        f"/api/wallets/{wallet_id}/transactions",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 0
+    assert data["total_pages"] == 1
+    assert data["transactions"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_invalid_page_size_rejected(wallet_client_with_db):
+    client, session_factory = wallet_client_with_db
+    resp = await client.post(
+        "/api/auth/setup",
+        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+    )
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    wallet_resp = await add_wallet(client, headers, "BTC", VALID_BTC)
+    wallet_id = wallet_resp.json()["id"]
+
+    # page_size=5 is below min (10)
+    resp = await client.get(
+        f"/api/wallets/{wallet_id}/transactions?page_size=5",
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+    # page_size=200 is above max (100)
+    resp = await client.get(
+        f"/api/wallets/{wallet_id}/transactions?page_size=200",
+        headers=headers,
+    )
+    assert resp.status_code == 422

@@ -11,7 +11,7 @@ import EditTagInput from "@/components/wallet/EditTagInput.vue";
 import RemoveWalletDialog from "@/components/wallet/RemoveWalletDialog.vue";
 import HdBadge from "@/components/wallet/HdBadge.vue";
 import DerivedAddressList from "@/components/wallet/DerivedAddressList.vue";
-import type { TransactionResponse, WalletResponse } from "@/types/api";
+import type { TransactionPage, TransactionResponse, WalletResponse } from "@/types/api";
 import {
   formatUsd,
   formatBtc,
@@ -36,6 +36,11 @@ const transactions = ref<TransactionResponse[]>([]);
 const txLoading = ref(false);
 const txError = ref<string | null>(null);
 const isRetrying = ref(false);
+const currentPage = ref(1);
+const pageSize = ref(50);
+const totalCount = ref(0);
+const totalPages = ref(1);
+const jumpTarget = ref<number | null>(null);
 
 function formatNativeBalance(w: WalletResponse): string {
   if (w.balance === null) return "Pending";
@@ -54,24 +59,57 @@ function formatAddedDate(iso: string): string {
   }
 }
 
+const pageRangeText = computed(() => {
+  if (totalCount.value === 0) return "No transactions";
+  const start = (currentPage.value - 1) * pageSize.value + 1;
+  const end = Math.min(currentPage.value * pageSize.value, totalCount.value);
+  return `Showing ${start}–${end} of ${totalCount.value}`;
+});
+
 async function loadTransactions() {
   if (!wallet.value) return;
   txLoading.value = true;
   txError.value = null;
   const api = useApi();
   try {
-    transactions.value = await api.get<TransactionResponse[]>(
-      `/wallets/${walletId.value}/transactions`,
+    const result = await api.get<TransactionPage>(
+      `/wallets/${walletId.value}/transactions?page=${currentPage.value}&page_size=${pageSize.value}`,
     );
+    transactions.value = result.transactions;
+    totalCount.value = result.total;
+    totalPages.value = result.total_pages;
+    if (currentPage.value > result.total_pages) {
+      currentPage.value = result.total_pages;
+    }
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       transactions.value = [];
+      totalCount.value = 0;
+      totalPages.value = 1;
     } else {
       txError.value =
         err instanceof ApiError ? err.detail : "Failed to load transactions.";
     }
   } finally {
     txLoading.value = false;
+  }
+}
+
+function goToPage(p: number) {
+  currentPage.value = Math.max(1, Math.min(p, totalPages.value));
+  void loadTransactions();
+}
+
+function onPageSizeChange(size: number) {
+  pageSize.value = size;
+  currentPage.value = 1;
+  void loadTransactions();
+}
+
+function doJump() {
+  if (jumpTarget.value !== null && jumpTarget.value >= 1 && jumpTarget.value <= totalPages.value) {
+    goToPage(jumpTarget.value);
+    jumpTarget.value = null;
   }
 }
 
@@ -122,6 +160,7 @@ watch(
   () => wallet.value?.balance,
   (newVal, oldVal) => {
     if (oldVal !== undefined && newVal !== oldVal) {
+      currentPage.value = 1;
       void loadTransactions();
     }
   },
@@ -131,6 +170,7 @@ watch(
   () => wallet.value?.history_status,
   (newStatus, oldStatus) => {
     if (oldStatus !== undefined && newStatus === "complete" && oldStatus !== "complete") {
+      currentPage.value = 1;
       void loadTransactions();
     }
   },
@@ -256,7 +296,7 @@ function onWalletRemoved() {
               <div class="stat-item">
                 <div class="stat-label">Transactions</div>
                 <div class="stat-value">
-                  {{ txLoading ? "..." : transactions.length }}
+                  {{ txLoading ? "..." : totalCount }}
                 </div>
               </div>
               <div class="stat-item">
@@ -337,56 +377,113 @@ function onWalletRemoved() {
           <div class="card-header">
             <h3>Transaction History</h3>
             <span v-if="!txLoading && !txError" class="tx-count">
-              {{ transactions.length }}
-              transaction{{ transactions.length !== 1 ? "s" : "" }}
+              {{ totalCount }}
+              transaction{{ totalCount !== 1 ? "s" : "" }}
             </span>
           </div>
 
           <div v-if="txLoading" class="tx-empty">Loading transactions...</div>
           <div v-else-if="txError" class="tx-empty tx-error">{{ txError }}</div>
-          <div v-else-if="transactions.length === 0" class="tx-empty">
+          <div v-else-if="totalCount === 0" class="tx-empty">
             No transactions yet.
           </div>
-          <table v-else class="tx-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Transaction</th>
-                <th>Type</th>
-                <th class="text-right">Amount</th>
-                <th class="text-right">Balance After</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="tx in transactions" :key="tx.id">
-                <td class="tx-date">{{ formatTimestamp(tx.timestamp) }}</td>
-                <td>
-                  <a
-                    class="tx-hash"
-                    :href="explorerUrl(tx.tx_hash, wallet.network)"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >{{ truncateAddress(tx.tx_hash, 8, 8) }}</a
+          <template v-else>
+            <table class="tx-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Transaction</th>
+                  <th>Type</th>
+                  <th class="text-right">Amount</th>
+                  <th class="text-right">Balance After</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="tx in transactions" :key="tx.id">
+                  <td class="tx-date">{{ formatTimestamp(tx.timestamp) }}</td>
+                  <td>
+                    <a
+                      class="tx-hash"
+                      :href="explorerUrl(tx.tx_hash, wallet.network)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >{{ truncateAddress(tx.tx_hash, 8, 8) }}</a
+                    >
+                  </td>
+                  <td>
+                    <span :class="['tx-type-badge', txType(tx.amount)]">
+                      {{ txType(tx.amount) === "in" ? "↑ IN" : "↓ OUT" }}
+                    </span>
+                  </td>
+                  <td :class="['tx-amount', txAmountClass(tx.amount)]">
+                    {{ formatAmount(tx.amount, wallet.network) }}
+                  </td>
+                  <td class="tx-balance">
+                    {{
+                      wallet.network === "BTC"
+                        ? formatBtc(tx.balance_after)
+                        : formatKas(tx.balance_after)
+                    }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="tx-pagination">
+              <span class="tx-page-info">{{ pageRangeText }}</span>
+              <div class="tx-page-controls">
+                <div class="page-size-group">
+                  <span class="page-size-label">Rows</span>
+                  <button
+                    v-for="size in [10, 50, 100]"
+                    :key="size"
+                    :class="['page-size-btn', { active: pageSize === size }]"
+                    @click="onPageSizeChange(size)"
                   >
-                </td>
-                <td>
-                  <span :class="['tx-type-badge', txType(tx.amount)]">
-                    {{ txType(tx.amount) === "in" ? "↑ IN" : "↓ OUT" }}
-                  </span>
-                </td>
-                <td :class="['tx-amount', txAmountClass(tx.amount)]">
-                  {{ formatAmount(tx.amount, wallet.network) }}
-                </td>
-                <td class="tx-balance">
-                  {{
-                    wallet.network === "BTC"
-                      ? formatBtc(tx.balance_after)
-                      : formatKas(tx.balance_after)
-                  }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                    {{ size }}
+                  </button>
+                </div>
+                <div class="page-nav">
+                  <button
+                    class="nav-btn"
+                    :disabled="currentPage === 1"
+                    title="First page"
+                    @click="goToPage(1)"
+                  >|◀</button>
+                  <button
+                    class="nav-btn"
+                    :disabled="currentPage === 1"
+                    title="Previous page"
+                    @click="goToPage(currentPage - 1)"
+                  >◀</button>
+                  <span class="page-display">{{ currentPage }} / {{ totalPages }}</span>
+                  <button
+                    class="nav-btn"
+                    :disabled="currentPage === totalPages"
+                    title="Next page"
+                    @click="goToPage(currentPage + 1)"
+                  >▶</button>
+                  <button
+                    class="nav-btn"
+                    :disabled="currentPage === totalPages"
+                    title="Last page"
+                    @click="goToPage(totalPages)"
+                  >▶|</button>
+                </div>
+                <div class="page-jump">
+                  <input
+                    v-model.number="jumpTarget"
+                    type="number"
+                    class="jump-input"
+                    :min="1"
+                    :max="totalPages"
+                    placeholder="Page"
+                    @keydown.enter="doJump"
+                  />
+                  <button class="jump-btn" @click="doJump">Go</button>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
       </template>
     </main>
@@ -795,6 +892,150 @@ function onWalletRemoved() {
   font-size: 0.82rem;
   color: var(--text-secondary);
   text-align: right;
+}
+
+.tx-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-top: 1px solid var(--border);
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.tx-page-info {
+  font-size: 0.78rem;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tx-page-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-size-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-size-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 2px;
+}
+
+.page-size-btn {
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.page-size-btn:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.page-size-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-btn {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1;
+}
+
+.nav-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-display {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  padding: 0 0.4rem;
+  white-space: nowrap;
+}
+
+.page-jump {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.jump-input {
+  width: 56px;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.75rem;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.jump-input:focus {
+  border-color: var(--accent);
+}
+
+.jump-input::-webkit-outer-spin-button,
+.jump-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.jump-btn {
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.jump-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 @media (max-width: 768px) {

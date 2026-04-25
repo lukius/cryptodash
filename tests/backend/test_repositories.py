@@ -681,6 +681,79 @@ async def test_transaction_list_by_wallet_in_range(db_session):
     assert len(result) == 3
 
 
+async def test_transaction_list_by_wallet_paginated_returns_slice(db_session):
+    user = make_user("yara")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id)
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = TransactionRepository(db_session)
+    base_time = _now()
+    txs = [
+        make_transaction(
+            wallet.id, f"hash_{i}", timestamp=base_time + timedelta(minutes=i)
+        )
+        for i in range(7)
+    ]
+    await repo.bulk_create(txs)
+    await db_session.flush()
+
+    # First page: 3 items
+    page1, total = await repo.list_by_wallet_paginated(wallet.id, limit=3, offset=0)
+    assert total == 7
+    assert len(page1) == 3
+
+    # Second page: 3 items
+    page2, total2 = await repo.list_by_wallet_paginated(wallet.id, limit=3, offset=3)
+    assert total2 == 7
+    assert len(page2) == 3
+
+    # Third page: 1 item (remainder)
+    page3, total3 = await repo.list_by_wallet_paginated(wallet.id, limit=3, offset=6)
+    assert total3 == 7
+    assert len(page3) == 1
+
+    # No overlap between pages
+    hashes_p1 = {tx.tx_hash for tx in page1}
+    hashes_p2 = {tx.tx_hash for tx in page2}
+    assert hashes_p1.isdisjoint(hashes_p2)
+
+
+async def test_transaction_list_by_wallet_paginated_ordered_newest_first(db_session):
+    user = make_user("zara")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id)
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = TransactionRepository(db_session)
+    base_time = _now()
+    txs = [
+        make_transaction(
+            wallet.id, f"hash_{i}", timestamp=base_time + timedelta(minutes=i)
+        )
+        for i in range(3)
+    ]
+    await repo.bulk_create(txs)
+    await db_session.flush()
+
+    results, _ = await repo.list_by_wallet_paginated(wallet.id, limit=10, offset=0)
+    assert len(results) == 3
+    assert results[0].timestamp >= results[1].timestamp >= results[2].timestamp
+
+
+async def test_transaction_list_by_wallet_paginated_empty_wallet(db_session):
+    repo = TransactionRepository(db_session)
+    results, total = await repo.list_by_wallet_paginated(_uuid(), limit=50, offset=0)
+    assert total == 0
+    assert results == []
+
+
 async def test_transaction_get_latest_for_wallet(db_session):
     user = make_user("xena")
     db_session.add(user)

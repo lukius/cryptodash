@@ -125,3 +125,11 @@ export interface TransactionResponse {
   block_height: number | null;
   timestamp: string;
 }
+
+export interface TransactionPage {
+  transactions: TransactionResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}

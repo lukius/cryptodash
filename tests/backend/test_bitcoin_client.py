@@ -313,8 +313,8 @@ async def test_get_with_retry_on_429_uses_retry_after(client):
 
 
 @respx.mock
-async def test_get_with_retry_on_429_defaults_60s_when_no_header(client):
-    """HTTP 429 without Retry-After header defaults to 60s wait."""
+async def test_get_with_retry_on_429_defaults_10s_when_no_header(client):
+    """HTTP 429 without Retry-After header defaults to 10s wait."""
     address = "bc1qtest"
     call_count = 0
 
@@ -343,7 +343,7 @@ async def test_get_with_retry_on_429_defaults_60s_when_no_header(client):
 
     assert balance == Decimal("0.5")
     assert call_count == 2
-    mock_sleep.assert_called_once_with(60)
+    mock_sleep.assert_called_once_with(10)
 
 
 @respx.mock
