@@ -323,21 +323,7 @@ class HistoryService:
                 {"wallet_id": wallet.id, "status": "started"},
             )
 
-            # Use pre-stored derived addresses when available to avoid a
-            # redundant gap-limit scan (refresh_single_hd_wallet already ran).
-            from backend.repositories.derived_address import DerivedAddressRepository
-
-            derived_repo = DerivedAddressRepository(db)
-            da_rows = await derived_repo.get_by_wallet(wallet.id)
-            if da_rows:
-                wallet_addr_set = {row.address for row in da_rows}
-                all_txs = await self.xpub_client.get_transactions_for_addresses(
-                    wallet_addr_set
-                )
-            else:
-                all_txs = await self.xpub_client.get_xpub_transactions_all(
-                    wallet.address
-                )
+            all_txs = await self.xpub_client.get_xpub_transactions_all(wallet.address)
 
             # Replay oldest-first; skip unconfirmed — only confirmed txs used
             # for balance reconstruction.
@@ -386,14 +372,13 @@ class HistoryService:
         Checks the Bitcoin chain tip height first (1 API call). If the tip matches
         the value stored from the last complete refresh, there are no new confirmed
         transactions and the sync is skipped entirely. On a tip advance, fetches new
-        transactions using the cached address set when available, then records the new
-        tip so future refreshes can skip correctly.
+        transactions via the Blockbook xpub endpoint, then records the new tip so
+        future refreshes can skip correctly.
 
         No live BalanceSnapshot is created here — RefreshService._get_hd_balance
         already stores one before this is called.
         """
         from backend.repositories.config import ConfigRepository
-        from backend.repositories.derived_address import DerivedAddressRepository
 
         config_repo = ConfigRepository(db)
         sync_tip_key = f"hd_sync_tip:{wallet.id}"
@@ -422,19 +407,9 @@ class HistoryService:
             ts_dt = ts_dt.replace(tzinfo=timezone.utc)
         after_ts = int(ts_dt.timestamp())
 
-        # Use pre-stored derived addresses when available to skip a redundant
-        # gap-limit scan — _get_hd_balance already discovered them this cycle.
-        derived_repo = DerivedAddressRepository(db)
-        da_rows = await derived_repo.get_by_wallet(wallet.id)
-        if da_rows:
-            wallet_addr_set = {row.address for row in da_rows}
-            new_txs = await self.xpub_client.get_transactions_for_addresses(
-                wallet_addr_set, after_timestamp=after_ts
-            )
-        else:
-            new_txs = await self.xpub_client.get_xpub_transactions_since(
-                wallet.address, after_ts
-            )
+        new_txs = await self.xpub_client.get_xpub_transactions_since(
+            wallet.address, after_ts
+        )
 
         running_balance = Decimal(last_tx.balance_after or "0")
         now = datetime.now(timezone.utc)

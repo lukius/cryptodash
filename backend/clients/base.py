@@ -27,8 +27,9 @@ class BaseClient:
     ) -> dict | list:
         """Single retry on transient failure.
 
-        - HTTP 429: wait Retry-After seconds (or 60s default), retry once.
-        - HTTP 5xx / 4xx: raise immediately — no retry.
+        - HTTP 429: wait Retry-After seconds (or 10s default), retry once.
+        - HTTP 5xx: wait 2s, retry once (transient origin/CDN errors).
+        - HTTP 4xx (other than 429): raise immediately — no retry.
         - RequestError (timeout, network): wait 10s, retry once.
         """
         try:
@@ -37,6 +38,12 @@ class BaseClient:
                 wait = int(response.headers.get("Retry-After", 10))
                 logger.warning(f"Rate limited on {path}. Waiting {wait}s before retry.")
                 await asyncio.sleep(wait)
+                response = await self._client.get(path, params=params)
+            elif 500 <= response.status_code < 600:
+                logger.warning(
+                    f"Upstream error {response.status_code} on {path}. Retrying in 2s."
+                )
+                await asyncio.sleep(2)
                 response = await self._client.get(path, params=params)
             response.raise_for_status()
             return response.json()

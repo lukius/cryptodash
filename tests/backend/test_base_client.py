@@ -85,19 +85,62 @@ async def test_network_unreachable(client):
 
 
 # ---------------------------------------------------------------------------
-# Confirm 5xx is not retried (BaseClient perspective)
+# 5xx retry — single retry then propagate
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_server_error_no_retry(client):
-    """HTTP 5xx raises immediately without retry — no sleep, single call."""
+async def test_server_error_persistent_raises_after_retry(client):
+    """HTTP 5xx on both attempts raises after one retry."""
     call_count = 0
 
     def side_effect(request):
         nonlocal call_count
         call_count += 1
         return httpx.Response(503)
+
+    respx.get(ADDRESS_PATH).mock(side_effect=side_effect)
+
+    with patch(
+        "backend.clients.base.asyncio.sleep", new_callable=AsyncMock
+    ) as mock_sleep:
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.get_balance(ADDRESS)
+
+    assert call_count == 2
+    mock_sleep.assert_called_once_with(2)
+
+
+@respx.mock
+async def test_server_error_transient_recovers_on_retry(client):
+    """HTTP 503 on first attempt then 200 on retry returns the success body."""
+    call_count = 0
+
+    def side_effect(request):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return httpx.Response(503)
+        return SUCCESS_RESPONSE
+
+    respx.get(ADDRESS_PATH).mock(side_effect=side_effect)
+
+    with patch("backend.clients.base.asyncio.sleep", new_callable=AsyncMock):
+        balance = await client.get_balance(ADDRESS)
+
+    assert call_count == 2
+    assert balance == 1  # 100_000_000 sat / SATOSHI
+
+
+@respx.mock
+async def test_4xx_not_retried(client):
+    """HTTP 4xx (other than 429) raises immediately, no retry."""
+    call_count = 0
+
+    def side_effect(request):
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(404)
 
     respx.get(ADDRESS_PATH).mock(side_effect=side_effect)
 

@@ -347,8 +347,8 @@ async def test_get_with_retry_on_429_defaults_10s_when_no_header(client):
 
 
 @respx.mock
-async def test_get_with_retry_raises_on_5xx(client):
-    """HTTP 5xx raises HTTPStatusError immediately — no retry."""
+async def test_get_with_retry_raises_on_persistent_5xx(client):
+    """HTTP 5xx is retried once; if it persists the error propagates."""
     address = "bc1qtest"
     call_count = 0
 
@@ -359,10 +359,11 @@ async def test_get_with_retry_raises_on_5xx(client):
 
     respx.get(f"{BASE_URL}/address/{address}").mock(side_effect=side_effect)
 
-    with pytest.raises(httpx.HTTPStatusError):
-        await client.get_balance(address)
+    with patch("backend.clients.base.asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.get_balance(address)
 
-    assert call_count == 1
+    assert call_count == 2
 
 
 # ---------------------------------------------------------------------------

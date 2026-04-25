@@ -1,13 +1,19 @@
-"""XpubClient — mempool.space per-address backend for HD wallet queries.
+"""XpubClient — Trezor Blockbook backend for HD wallet queries.
 
-Replaces the blockchain.info multiaddr approach. Derives addresses locally
-using hd_derive.py, then queries mempool.space per-address endpoints in
-parallel (semaphore-limited).
+Blockbook (the indexer Trezor Suite uses) returns aggregate balance, per-derived-address
+balances, and full transaction history for an entire xpub/ypub/zpub in a single HTTP
+call. This collapses an HD wallet refresh from 40+ per-address requests against an
+Esplora-style endpoint down to one call, eliminating the rate-limit pressure that
+plagued the previous mempool.space implementation.
 
-Address types derived based on key prefix:
-  zpub → bc1q... (P2WPKH, BIP84)
-  ypub → 3...    (P2SH-P2WPKH, BIP49)
-  xpub → 1...    (P2PKH, BIP44)
+zpub (BIP84/P2WPKH), ypub (BIP49/P2SH-P2WPKH), and xpub (BIP44/P2PKH) are all
+accepted natively — Blockbook reads the SLIP-132 version prefix and derives the
+correct script type server-side. No local key derivation is required.
+
+Endpoints used (https://btc2.trezor.io/api/v2):
+  GET /api                                            — node + indexer status (tip height)
+  GET /xpub/{key}?details=tokenBalances&tokens=used   — balance + per-address breakdown
+  GET /xpub/{key}?details=txs&tokens=used&pageSize=…  — paginated tx history
 """
 
 import asyncio
@@ -15,10 +21,7 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
-import httpx
-
 from backend.clients.base import BaseClient
-from backend.clients.hd_derive import derive_address_at
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +39,8 @@ class DerivedAddressData:
 class XpubSummary:
     balance_sat: int  # aggregate confirmed balance in satoshis
     balance_btc: Decimal  # = balance_sat / SATOSHI
-    n_tx: int  # total transaction count
-    derived_addresses: list[DerivedAddressData]  # ALL active addresses
+    n_tx: int  # total transaction count across all derived addresses
+    derived_addresses: list[DerivedAddressData]  # active addresses with balance > 0
 
 
 @dataclass
@@ -51,269 +54,179 @@ class XpubTransaction:
 
 
 class XpubClient(BaseClient):
-    GAP_LIMIT = 20
-    _CONCURRENCY = 1
+    PAGE_SIZE = 1000  # Blockbook's documented maximum
+    _PAGE_DELAY_SECONDS = 0.1
 
     def __init__(self):
-        super().__init__(base_url="https://mempool.space/api", timeout=30.0)
+        super().__init__(base_url="https://btc2.trezor.io/api/v2", timeout=30.0)
 
     async def get_tip_height(self) -> int:
         """Return the current Bitcoin chain tip block height. One API call."""
-        return await self._get_with_retry("/blocks/tip/height")
+        data = await self._get_with_retry("/api")
+        return int(data["blockbook"]["bestHeight"])
 
     async def get_xpub_summary(self, key: str) -> XpubSummary:
-        """Fetch aggregate balance and active derived address list.
+        """Fetch aggregate balance and active derived address list. One API call.
 
-        Parameters:
-          key: the original xpub/ypub/zpub key (not normalized).
-        Returns: XpubSummary with aggregate balance and list of DerivedAddressData.
+        Returns: XpubSummary with aggregate balance and a list of DerivedAddressData
+        for each address with a positive balance.
         Raises: httpx.HTTPStatusError, httpx.RequestError on API failure.
         """
-        active_addrs = await self._scan_active_addresses(key)
-        balance_sat = sum(a.balance_sat for a in active_addrs)
-        n_tx = sum(a.n_tx for a in active_addrs)
+        data = await self._get_with_retry(
+            f"/xpub/{key}",
+            params={"details": "tokenBalances", "tokens": "used"},
+        )
+        balance_sat = int(data.get("balance", "0"))
+        n_tx = int(data.get("addrTxCount", data.get("txs", 0)) or 0)
+
+        derived: list[DerivedAddressData] = []
+        for token in data.get("tokens") or []:
+            if token.get("type") != "XPUBAddress":
+                continue
+            addr_balance = int(token.get("balance", "0") or "0")
+            if addr_balance <= 0:
+                continue
+            derived.append(
+                DerivedAddressData(
+                    address=token["name"],
+                    balance_sat=addr_balance,
+                    n_tx=int(token.get("transfers", 0) or 0),
+                )
+            )
+
         return XpubSummary(
             balance_sat=balance_sat,
             balance_btc=Decimal(balance_sat) / SATOSHI,
             n_tx=n_tx,
-            derived_addresses=[a for a in active_addrs if a.balance_sat > 0],
+            derived_addresses=derived,
         )
 
     async def get_xpub_transactions_all(self, key: str) -> list[XpubTransaction]:
         """Fetch ALL confirmed transactions for the xpub.
 
-        Derives active addresses, fetches tx history per address in parallel,
-        deduplicates, computes net amount relative to the wallet address set.
-        Returns list sorted oldest-first.
+        Paginates Blockbook's tx response, deduplicates internally, and computes
+        signed net amounts relative to the wallet's address set.
+        Returns the list sorted oldest-first.
         """
-        active_addrs = await self._scan_active_addresses(key)
-        return await self._fetch_and_build_txs(active_addrs)
+        return await self._fetch_xpub_transactions(key, after_timestamp=None)
 
     async def get_xpub_transactions_since(
         self, key: str, after_timestamp: int
     ) -> list[XpubTransaction]:
-        """Fetch confirmed transactions newer than after_timestamp.
+        """Fetch confirmed transactions newer than ``after_timestamp``.
 
-        Used for incremental sync. Returns list sorted oldest-first.
+        Used for incremental sync. Pagination stops as soon as a page surfaces a
+        block_time at or below ``after_timestamp``. Returns oldest-first.
         """
-        active_addrs = await self._scan_active_addresses(key)
-        all_txs = await self._fetch_and_build_txs(active_addrs, after_timestamp)
-        return all_txs
+        return await self._fetch_xpub_transactions(key, after_timestamp=after_timestamp)
 
-    async def get_balance_for_addresses(
-        self, addresses: list[str]
-    ) -> tuple[Decimal, list[DerivedAddressData]]:
-        """Fetch current balances for a pre-known list of addresses. No gap-limit scan.
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
-        Used by the quick-refresh path when the active address set is already
-        cached in the DB and the full gap-limit scan TTL has not expired.
-        Returns (total_balance_btc, list of DerivedAddressData with balance > 0).
-        """
-        semaphore = asyncio.Semaphore(self._CONCURRENCY)
-        results = await asyncio.gather(
-            *[self._query_address(addr, semaphore) for addr in addresses]
-        )
-        active: list[DerivedAddressData] = []
-        for addr, info in zip(addresses, results, strict=True):
-            funded = info["chain_stats"]["funded_txo_sum"]
-            spent = info["chain_stats"]["spent_txo_sum"]
-            balance_sat = funded - spent
-            n_tx = info["chain_stats"]["tx_count"]
-            active.append(
-                DerivedAddressData(address=addr, balance_sat=balance_sat, n_tx=n_tx)
+    async def _fetch_xpub_transactions(
+        self, key: str, after_timestamp: int | None
+    ) -> list[XpubTransaction]:
+        """Paginate /xpub/{key}?details=txs and build XpubTransaction list."""
+        wallet_addr_set: set[str] = set()
+        seen_txids: set[str] = set()
+        results: list[XpubTransaction] = []
+        page = 1
+        stopped_early = False
+
+        while not stopped_early:
+            data = await self._get_with_retry(
+                f"/xpub/{key}",
+                params={
+                    "details": "txs",
+                    "tokens": "used",
+                    "pageSize": self.PAGE_SIZE,
+                    "page": page,
+                },
             )
-        positive = [a for a in active if a.balance_sat > 0]
-        total_sat = sum(a.balance_sat for a in positive)
-        return Decimal(total_sat) / SATOSHI, positive
 
-    async def get_transactions_for_addresses(
-        self,
-        wallet_addrs: set[str],
-        after_timestamp: int | None = None,
-    ) -> list[XpubTransaction]:
-        """Fetch and build transactions for a pre-known set of wallet addresses.
+            if not wallet_addr_set:
+                # Capture the address set from the first page response. Subsequent
+                # pages return the same set, so we only need to read it once.
+                wallet_addr_set = _extract_wallet_addresses(data)
 
-        Skips the gap-limit scan. Used by history import after refresh has
-        already discovered and stored the active address set in the DB.
-        Optional after_timestamp filters to transactions newer than that Unix epoch.
-        """
-        stubs = [
-            DerivedAddressData(address=addr, balance_sat=0, n_tx=1)
-            for addr in wallet_addrs
-        ]
-        return await self._fetch_and_build_txs(stubs, after_timestamp)
+            transactions = data.get("transactions") or []
+            for tx in transactions:
+                # Skip unconfirmed (no block_time) — only confirmed txs are
+                # used for balance reconstruction.
+                block_time = tx.get("blockTime")
+                if not tx.get("confirmations") or block_time is None:
+                    continue
+                if after_timestamp is not None and block_time <= after_timestamp:
+                    # Pagination is newest-first; once we cross the cutoff we
+                    # have all the new txs we need.
+                    stopped_early = True
+                    continue
 
-    async def _scan_active_addresses(self, key: str) -> list[DerivedAddressData]:
-        """Discover all active derived addresses using the BIP44 gap limit.
-
-        Scans both external (chain=0) and change (chain=1) chains.
-        Stops when GAP_LIMIT consecutive unused addresses are encountered.
-        Returns all addresses with n_tx > 0.
-        """
-        semaphore = asyncio.Semaphore(self._CONCURRENCY)
-        active: list[DerivedAddressData] = []
-
-        for chain in (0, 1):
-            index = 0
-            while True:
-                batch_addrs = [
-                    derive_address_at(key, chain, index + i)
-                    for i in range(self.GAP_LIMIT)
-                ]
-
-                results = await asyncio.gather(
-                    *[self._query_address(addr, semaphore) for addr in batch_addrs]
-                )
-
-                gap = 0
-                for addr, info in zip(batch_addrs, results, strict=True):
-                    tx_count = info["chain_stats"]["tx_count"]
-                    if tx_count > 0:
-                        funded = info["chain_stats"]["funded_txo_sum"]
-                        spent = info["chain_stats"]["spent_txo_sum"]
-                        active.append(
-                            DerivedAddressData(
-                                address=addr,
-                                balance_sat=funded - spent,
-                                n_tx=tx_count,
-                            )
-                        )
-                        gap = 0
-                    else:
-                        gap += 1
-
-                index += self.GAP_LIMIT
-
-                if gap >= self.GAP_LIMIT:
-                    break
-
-        return active
-
-    async def _query_address(self, address: str, semaphore: asyncio.Semaphore) -> dict:
-        """Query /address/{addr} with concurrency limiting."""
-        async with semaphore:
-            return await self._get_with_retry(f"/address/{address}")
-
-    async def _fetch_and_build_txs(
-        self,
-        active_addrs: list[DerivedAddressData],
-        after_timestamp: int | None = None,
-    ) -> list[XpubTransaction]:
-        """Fetch tx histories for active addresses, deduplicate, compute net amounts.
-
-        Returns list sorted oldest-first.
-        Only confirmed transactions are included.
-        """
-        if not active_addrs:
-            return []
-
-        wallet_addr_set = {a.address for a in active_addrs}
-
-        # Fetch all raw tx dicts per address
-        semaphore = asyncio.Semaphore(self._CONCURRENCY)
-
-        async def fetch_for_addr(addr: str) -> list[dict]:
-            async with semaphore:
-                return await self._get_all_txs_for_address(addr, after_timestamp)
-
-        pages = await asyncio.gather(*[fetch_for_addr(a.address) for a in active_addrs])
-
-        # Deduplicate by txid
-        seen: dict[str, dict] = {}
-        for page in pages:
-            for tx in page:
                 txid = tx["txid"]
-                if txid not in seen:
-                    seen[txid] = tx
+                if txid in seen_txids:
+                    continue
+                seen_txids.add(txid)
 
-        # Build XpubTransaction list
-        result: list[XpubTransaction] = []
-        for tx in seen.values():
-            status = tx.get("status", {})
-            # Only confirmed txs
-            if not status.get("confirmed", False):
-                continue
-            block_time: int | None = status.get("block_time")
-            block_height: int | None = status.get("block_height")
-
-            # Net amount relative to this wallet
-            inflow = sum(
-                vout["value"]
-                for vout in tx.get("vout", [])
-                if vout.get("scriptpubkey_address") in wallet_addr_set
-            )
-            outflow = sum(
-                vin["prevout"]["value"]
-                for vin in tx.get("vin", [])
-                if vin.get("prevout")
-                and vin["prevout"].get("scriptpubkey_address") in wallet_addr_set
-            )
-            net_sat = inflow - outflow
-
-            result.append(
-                XpubTransaction(
-                    tx_hash=tx["txid"],
-                    timestamp=block_time,
-                    block_height=block_height,
-                    amount_sat=net_sat,
+                results.append(
+                    XpubTransaction(
+                        tx_hash=txid,
+                        timestamp=int(block_time),
+                        block_height=tx.get("blockHeight"),
+                        amount_sat=_compute_net_amount(tx, wallet_addr_set),
+                    )
                 )
-            )
 
-        # Sort oldest-first by (timestamp, block_height)
-        result.sort(
+            total_pages = int(data.get("totalPages", 0) or 0)
+            if page >= total_pages or not transactions:
+                break
+            page += 1
+            await asyncio.sleep(self._PAGE_DELAY_SECONDS)
+
+        results.sort(
             key=lambda t: (
                 t.timestamp if t.timestamp is not None else 0,
                 t.block_height or 0,
             )
         )
-        return result
+        return results
 
-    async def _get_all_txs_for_address(
-        self,
-        address: str,
-        after_timestamp: int | None = None,
-    ) -> list[dict]:
-        """Paginate /address/{addr}/txs/chain (25 per page, newest-first).
 
-        Only returns confirmed transactions.
-        Stops when page is empty or < 25 items.
-        Adds 0.1s sleep between pages to be polite.
-        If after_timestamp is given, stops when block_time <= after_timestamp.
-        """
-        all_txs: list[dict] = []
-        after_txid: str | None = None
+def _extract_wallet_addresses(data: dict) -> set[str]:
+    """Pull the set of derived (used) addresses from a Blockbook xpub response."""
+    addrs: set[str] = set()
+    for token in data.get("tokens") or []:
+        if token.get("type") == "XPUBAddress" and token.get("name"):
+            addrs.add(token["name"])
+    return addrs
 
-        while True:
-            path = f"/address/{address}/txs/chain"
-            if after_txid:
-                path += f"/{after_txid}"
 
-            try:
-                page: list = await self._get(path)
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 429:
-                    logger.warning("Rate limited fetching txs for %s; skipping this address this cycle", address)
-                    return all_txs
-                raise
+def _compute_net_amount(tx: dict, wallet_addr_set: set[str]) -> int:
+    """Compute the signed net satoshi amount for a Blockbook tx vs. a wallet's
+    address set.
 
-            if not page:
-                break
+    Positive => received, negative => sent. Uses ``addresses`` lists on each
+    vin/vout (Blockbook supports multi-address scripts; an entry counts toward the
+    wallet only if any of its addresses is in the set).
+    """
+    inflow = sum(
+        int(vout.get("value", "0") or "0")
+        for vout in tx.get("vout") or []
+        if _entry_belongs_to_wallet(vout, wallet_addr_set)
+    )
+    outflow = sum(
+        int(vin.get("value", "0") or "0")
+        for vin in tx.get("vin") or []
+        if _entry_belongs_to_wallet(vin, wallet_addr_set)
+    )
+    return inflow - outflow
 
-            for tx in page:
-                status = tx.get("status", {})
-                if not status.get("confirmed", False):
-                    continue
-                block_time = status.get("block_time")
-                if after_timestamp is not None and block_time is not None:
-                    if block_time <= after_timestamp:
-                        # Reached already-known transactions; stop this address
-                        return all_txs
-                all_txs.append(tx)
 
-            if len(page) < 25:
-                break
-
-            after_txid = page[-1]["txid"]
-            await asyncio.sleep(0.1)
-
-        return all_txs
+def _entry_belongs_to_wallet(entry: dict, wallet_addr_set: set[str]) -> bool:
+    """True if any of the entry's addresses is one of the wallet's derived addresses."""
+    if not entry.get("isAddress", True):
+        return False
+    for addr in entry.get("addresses") or []:
+        if addr in wallet_addr_set:
+            return True
+    return False

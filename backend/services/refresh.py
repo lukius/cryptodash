@@ -21,7 +21,6 @@ from backend.repositories.wallet import WalletRepository
 logger = logging.getLogger(__name__)
 
 _MAX_CONCURRENT = 5
-_HD_SCAN_TTL_SECONDS = 1800  # full gap-limit scan at most once every 30 min
 
 
 @dataclass
@@ -282,8 +281,8 @@ class RefreshService:
         advanced since the last complete refresh, returns the cached balance with no
         further API calls — balance cannot have changed if no new block was mined.
 
-        When the tip has advanced, uses a TTL to decide between a quick re-check of
-        known addresses (~5-10 calls) and a full gap-limit scan (~40 calls).
+        When the tip has advanced, hits the Blockbook xpub endpoint once to fetch
+        the aggregate balance and per-address breakdown.
 
         Called from the full refresh loop; uses the shared db session.
         Raises on API failure (caught by fetch_one).
@@ -302,35 +301,6 @@ class RefreshService:
                 logger.debug("HD wallet %s: tip unchanged (%d), using cached balance", wallet.tag, current_tip)
                 return Decimal(last_snap.balance)
 
-        derived_repo = DerivedAddressRepository(db)
-        da_rows = await derived_repo.get_by_wallet(wallet.id)
-
-        if da_rows:
-            scan_time = da_rows[0].last_updated_at
-            if scan_time.tzinfo is None:
-                scan_time = scan_time.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - scan_time).total_seconds()
-
-            if age < _HD_SCAN_TTL_SECONDS:
-                # Quick path: re-check known addresses only, preserve scan timestamp
-                addresses = [row.address for row in da_rows]
-                balance_btc, fresh_addrs = await self.xpub_client.get_balance_for_addresses(addresses)
-                addr_entries = [
-                    {
-                        "address": a.address,
-                        "balance_btc": Decimal(a.balance_sat) / SATOSHI,
-                        "balance_sat": a.balance_sat,
-                    }
-                    for a in fresh_addrs
-                ]
-                # Pass original scan_time so TTL keeps ticking from the last full scan
-                await derived_repo.replace_all(
-                    wallet_id=wallet.id, addresses=addr_entries, updated_at=scan_time
-                )
-                await config_repo.set(bal_tip_key, str(current_tip))
-                return balance_btc
-
-        # Full scan path (cache missing or stale)
         summary = await self.xpub_client.get_xpub_summary(wallet.address)
 
         now = datetime.now(timezone.utc)
@@ -343,6 +313,7 @@ class RefreshService:
             for a in summary.derived_addresses
         ]
 
+        derived_repo = DerivedAddressRepository(db)
         total_count = await derived_repo.replace_all(
             wallet_id=wallet.id,
             addresses=addr_entries,
