@@ -16,7 +16,7 @@ import {
 import "chartjs-adapter-date-fns";
 import type { PortfolioHistoryResponse } from "@/types/api";
 import TimeRangeSelector from "@/components/common/TimeRangeSelector.vue";
-import { formatUsd } from "@/utils/format";
+import { formatUsd, formatBtc, formatKas } from "@/utils/format";
 
 ChartJS.register(
   LinearScale,
@@ -30,19 +30,28 @@ ChartJS.register(
 );
 
 type TimeRange = "7d" | "30d" | "90d" | "1y" | "all";
+type Unit = "usd" | "btc" | "kas";
 
 const props = defineProps<{
   portfolioHistory: PortfolioHistoryResponse | null;
   selectedRange: TimeRange;
+  unit: Unit;
 }>();
 
 const emit = defineEmits<{
   (e: "range-change", range: TimeRange): void;
+  (e: "unit-change", unit: Unit): void;
 }>();
 
 const hasData = computed(
   () => (props.portfolioHistory?.data_points?.length ?? 0) > 1,
 );
+
+function formatValue(v: number): string {
+  if (props.unit === "btc") return formatBtc(v);
+  if (props.unit === "kas") return formatKas(v);
+  return formatUsd(v);
+}
 
 const chartData = computed(() => {
   if (!hasData.value) return null;
@@ -67,7 +76,7 @@ const chartData = computed(() => {
   };
 });
 
-const chartOptions = {
+const chartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   interaction: {
@@ -89,7 +98,7 @@ const chartOptions = {
         weight: "bold" as const,
       },
       callbacks: {
-        label: (ctx: TooltipItem<"line">) => ` ${formatUsd(ctx.parsed.y ?? 0)}`,
+        label: (ctx: TooltipItem<"line">) => ` ${formatValue(ctx.parsed.y ?? 0)}`,
       },
     },
   },
@@ -99,6 +108,7 @@ const chartOptions = {
       time: {
         tooltipFormat: "MMM d, yyyy",
         displayFormats: { day: "MMM d", week: "MMM d", month: "MMM yyyy" },
+        minUnit: "day" as const,
       },
       grid: { color: "rgba(255,255,255,0.04)" },
       ticks: { color: "rgba(255,255,255,0.35)", maxRotation: 0, maxTicksLimit: 6 },
@@ -107,24 +117,52 @@ const chartOptions = {
       grid: { color: "rgba(255,255,255,0.04)" },
       ticks: {
         color: "rgba(255,255,255,0.35)",
-        callback: (value: number | string) => formatUsd(value),
+        callback: (value: number | string) =>
+          formatValue(typeof value === "string" ? parseFloat(value) : value),
       },
     },
   },
-};
+}));
 </script>
 
 <template>
   <div class="card chart-card">
     <div class="chart-header">
       <span class="chart-title">Portfolio Value</span>
-      <TimeRangeSelector
-        :model-value="selectedRange"
-        @update:model-value="emit('range-change', $event)"
-      />
+      <div class="chart-controls">
+        <div class="unit-toggle">
+          <button
+            :class="{ active: unit === 'usd' }"
+            @click="emit('unit-change', 'usd')"
+          >
+            USD
+          </button>
+          <button
+            :class="{ active: unit === 'btc' }"
+            @click="emit('unit-change', 'btc')"
+          >
+            BTC
+          </button>
+          <button
+            :class="{ active: unit === 'kas' }"
+            @click="emit('unit-change', 'kas')"
+          >
+            KAS
+          </button>
+        </div>
+        <TimeRangeSelector
+          :model-value="selectedRange"
+          @update:model-value="emit('range-change', $event)"
+        />
+      </div>
     </div>
     <div class="chart-canvas-wrap" style="height: 240px">
-      <Line v-if="chartData" :key="selectedRange" :data="chartData" :options="chartOptions" />
+      <Line
+        v-if="chartData"
+        :key="`${selectedRange}-${unit}`"
+        :data="chartData"
+        :options="chartOptions"
+      />
       <div v-else class="empty-chart">
         {{ portfolioHistory === null ? "Loading, please wait..." : "Not enough data for this time range." }}
       </div>
@@ -142,12 +180,46 @@ const chartOptions = {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .chart-title {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text);
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.unit-toggle {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.unit-toggle button {
+  padding: 0.3rem 0.55rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.unit-toggle button.active {
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
 .chart-canvas-wrap {

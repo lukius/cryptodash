@@ -37,7 +37,7 @@ defineProps<{
     <div class="price-line">
       <span>KAS/USD</span>
       <span class="price">{{
-        summary ? formatUsd(summary.kas_price_usd) : "N/A"
+        summary ? formatUsd(summary.kas_price_usd, 3) : "N/A"
       }}</span>
     </div>
   </div>

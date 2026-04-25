@@ -1,11 +1,14 @@
-export function formatUsd(value: string | number | null | undefined): string {
+export function formatUsd(
+  value: string | number | null | undefined,
+  decimals = 2,
+): string {
   if (value === null || value === undefined) return "N/A";
   const num = typeof value === "string" ? parseFloat(value) : value;
   if (isNaN(num)) return "N/A";
   const abs = Math.abs(num);
   const formatted = abs.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   });
   return num < 0 ? `-$${formatted}` : `$${formatted}`;
 }

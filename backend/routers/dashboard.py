@@ -159,6 +159,11 @@ async def get_portfolio_history(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid range. Must be one of: {', '.join(_RANGE_DAYS)}",
         )
+    if unit not in ("usd", "btc", "kas"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid unit. Must be one of: usd, btc, kas",
+        )
 
     wallet_repo = WalletRepository(db)
     snap_repo = BalanceSnapshotRepository(db)
@@ -216,10 +221,21 @@ async def get_portfolio_history(
             has_value = True
 
         if has_value:
+            display_value = total_value
+            if unit == "btc":
+                btc_snap = await price_repo.get_nearest_before("BTC", ts)
+                if btc_snap is None or Decimal(btc_snap.price_usd) == 0:
+                    continue
+                display_value = total_value / Decimal(btc_snap.price_usd)
+            elif unit == "kas":
+                kas_snap = await price_repo.get_nearest_before("KAS", ts)
+                if kas_snap is None or Decimal(kas_snap.price_usd) == 0:
+                    continue
+                display_value = total_value / Decimal(kas_snap.price_usd)
             data_points.append(
                 HistoryDataPoint(
                     timestamp=ts.isoformat(),
-                    value=str(total_value),
+                    value=str(display_value),
                 )
             )
 

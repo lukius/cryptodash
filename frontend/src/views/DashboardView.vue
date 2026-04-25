@@ -122,7 +122,9 @@ onUnmounted(() => {
           <PortfolioValueChart
             :portfolio-history="dashboard.portfolioHistory"
             :selected-range="dashboard.selectedRange"
+            :unit="dashboard.portfolioUnit"
             @range-change="onRangeChange"
+            @unit-change="dashboard.setPortfolioUnit($event)"
           />
           <PortfolioComposition :composition="dashboard.composition" />
         </div>

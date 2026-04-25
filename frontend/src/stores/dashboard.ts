@@ -17,6 +17,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
   const priceHistory = ref<PriceHistoryResponse | null>(null);
   const composition = ref<PortfolioComposition | null>(null);
   const selectedRange = ref<TimeRange>("30d");
+  const portfolioUnit = ref<"usd" | "btc" | "kas">("usd");
   const isRefreshing = ref(false);
   const error = ref<string | null>(null);
 
@@ -34,12 +35,18 @@ export const useDashboardStore = defineStore("dashboard", () => {
     const api = useApi();
     try {
       portfolioHistory.value = await api.get<PortfolioHistoryResponse>(
-        `/dashboard/portfolio-history?range=${range}`,
+        `/dashboard/portfolio-history?range=${range}&unit=${portfolioUnit.value}`,
       );
     } catch (err) {
       error.value = err instanceof ApiError ? err.detail : String(err);
       throw err;
     }
+  }
+
+  async function setPortfolioUnit(unit: "usd" | "btc" | "kas"): Promise<void> {
+    portfolioUnit.value = unit;
+    portfolioHistory.value = null;
+    await fetchPortfolioHistory(selectedRange.value);
   }
 
   async function fetchPriceHistory(range: TimeRange): Promise<void> {
@@ -118,6 +125,7 @@ export const useDashboardStore = defineStore("dashboard", () => {
     priceHistory,
     composition,
     selectedRange,
+    portfolioUnit,
     isRefreshing,
     error,
     fetchSummary,
@@ -127,5 +135,6 @@ export const useDashboardStore = defineStore("dashboard", () => {
     fetchWalletHistory,
     triggerRefresh,
     setRange,
+    setPortfolioUnit,
   };
 });

@@ -135,6 +135,7 @@ const chartOptions = computed(() => ({
       time: {
         tooltipFormat: "MMM d, yyyy",
         displayFormats: { day: "MMM d", week: "MMM d", month: "MMM yyyy" },
+        minUnit: "day" as const,
       },
       grid: { color: "rgba(255,255,255,0.04)" },
       ticks: { color: "rgba(255,255,255,0.35)", maxRotation: 0, maxTicksLimit: 6 },

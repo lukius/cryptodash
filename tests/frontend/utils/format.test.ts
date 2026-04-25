@@ -33,6 +33,14 @@ describe('formatUsd', () => {
   it('handles negative values', () => {
     expect(formatUsd('-500.5')).toBe('-$500.50')
   })
+
+  it('formats with custom decimal places', () => {
+    expect(formatUsd('0.1234', 3)).toBe('$0.123')
+  })
+
+  it('formats KAS price with 3 decimals', () => {
+    expect(formatUsd('0.055', 3)).toBe('$0.055')
+  })
 })
 
 describe('formatBtc', () => {

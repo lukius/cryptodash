@@ -397,6 +397,43 @@ async def test_portfolio_history_all_range(dashboard_client, auth_headers, seede
     assert data["range"] == "all"
 
 
+@pytest.mark.asyncio
+async def test_portfolio_history_unit_btc(dashboard_client, auth_headers, seeded_db):
+    # seeded: 1.0 BTC @ $50000 + 1000 KAS @ $0.05 = $50050 total
+    # BTC price = $50000, so total in BTC = 50050 / 50000 = 1.001
+    resp = await dashboard_client.get(
+        "/api/dashboard/portfolio-history?range=7d&unit=btc", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["unit"] == "btc"
+    assert len(data["data_points"]) > 0
+    value = Decimal(data["data_points"][0]["value"])
+    assert value == Decimal("50050") / Decimal("50000")
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_unit_kas(dashboard_client, auth_headers, seeded_db):
+    # seeded: $50050 total, KAS price = $0.05 → total in KAS = 50050 / 0.05 = 1001000
+    resp = await dashboard_client.get(
+        "/api/dashboard/portfolio-history?range=7d&unit=kas", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["unit"] == "kas"
+    assert len(data["data_points"]) > 0
+    value = Decimal(data["data_points"][0]["value"])
+    assert value == Decimal("50050") / Decimal("0.05")
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_invalid_unit(dashboard_client, auth_headers, seeded_db):
+    resp = await dashboard_client.get(
+        "/api/dashboard/portfolio-history?range=7d&unit=eur", headers=auth_headers
+    )
+    assert resp.status_code == 400
+
+
 # ---------------------------------------------------------------------------
 # GET /wallet-history/{wallet_id}
 # ---------------------------------------------------------------------------
