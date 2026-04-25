@@ -50,7 +50,9 @@ function dispatchEvent(event: WebSocketEvent) {
 
     case "refresh:completed":
       dashboard.isRefreshing = false;
+      void wallets.fetchWallets();
       void dashboard.fetchSummary();
+      void dashboard.fetchComposition();
       break;
 
     case "wallet:added":
