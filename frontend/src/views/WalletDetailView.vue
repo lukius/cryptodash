@@ -34,6 +34,7 @@ const unit = ref<"usd" | "native">("native");
 const showRemoveDialog = ref(false);
 const transactions = ref<TransactionResponse[]>([]);
 const txLoading = ref(false);
+const txPageChanging = ref(false);
 const txError = ref<string | null>(null);
 const isRetrying = ref(false);
 const currentPage = ref(1);
@@ -97,13 +98,15 @@ async function loadTransactions() {
 
 function goToPage(p: number) {
   currentPage.value = Math.max(1, Math.min(p, totalPages.value));
-  void loadTransactions();
+  txPageChanging.value = true;
+  void loadTransactions().finally(() => { txPageChanging.value = false; });
 }
 
 function onPageSizeChange(size: number) {
   pageSize.value = size;
   currentPage.value = 1;
-  void loadTransactions();
+  txPageChanging.value = true;
+  void loadTransactions().finally(() => { txPageChanging.value = false; });
 }
 
 function doJump() {
@@ -382,13 +385,13 @@ function onWalletRemoved() {
             </span>
           </div>
 
-          <div v-if="txLoading" class="tx-empty">Loading transactions...</div>
+          <div v-if="txLoading && !txPageChanging" class="tx-empty">Loading transactions...</div>
           <div v-else-if="txError" class="tx-empty tx-error">{{ txError }}</div>
           <div v-else-if="totalCount === 0" class="tx-empty">
             No transactions yet.
           </div>
           <template v-else>
-            <table class="tx-table">
+            <table :class="['tx-table', { 'tx-table-loading': txPageChanging }]">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -892,6 +895,11 @@ function onWalletRemoved() {
   font-size: 0.82rem;
   color: var(--text-secondary);
   text-align: right;
+}
+
+.tx-table-loading {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .tx-pagination {
