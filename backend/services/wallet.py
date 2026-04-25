@@ -438,7 +438,12 @@ class WalletService:
             raise WalletNotFoundError(f"Wallet {wallet_id} not found.")
         await self.wallet_repo.delete(wallet_id)
         # Clean up HD-wallet config keys (no-op for individual wallets)
-        await self.config_repo.delete_by_prefix(f"hd_address_count:{wallet_id}")
+        for prefix in (
+            f"hd_address_count:{wallet_id}",
+            f"hd_bal_tip:{wallet_id}",
+            f"hd_sync_tip:{wallet_id}",
+        ):
+            await self.config_repo.delete_by_prefix(prefix)
 
     async def retry_history_import(self, wallet_id: str) -> None:
         wallet = await self.wallet_repo.get_by_id(wallet_id, self.user.id)

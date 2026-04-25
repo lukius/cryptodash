@@ -795,7 +795,8 @@ async def test_hd_wallet_loading_state_before_first_fetch(wallet_client, auth_he
 @pytest.mark.asyncio
 async def test_hd_wallet_remove_cascades(wallet_client, auth_headers, fresh_engine):
     """DELETE /api/wallets/{id} for an HD wallet removes the wallet, its
-    derived_addresses rows, and the hd_address_count config key."""
+    derived_addresses rows, and all per-wallet HD config keys
+    (hd_address_count, hd_bal_tip, hd_sync_tip)."""
     from datetime import datetime, timezone
 
     from sqlalchemy import select
@@ -810,7 +811,13 @@ async def test_hd_wallet_remove_cascades(wallet_client, auth_headers, fresh_engi
     assert resp.status_code == 201
     wallet_id = resp.json()["id"]
 
-    # Insert derived address row and config key directly
+    config_keys = (
+        f"hd_address_count:{wallet_id}",
+        f"hd_bal_tip:{wallet_id}",
+        f"hd_sync_tip:{wallet_id}",
+    )
+
+    # Insert derived address row + every per-wallet HD config key
     session_factory = async_sessionmaker(
         fresh_engine, class_=AsyncSession, expire_on_commit=False
     )
@@ -825,13 +832,8 @@ async def test_hd_wallet_remove_cascades(wallet_client, auth_headers, fresh_engi
             last_updated_at=now,
         )
         db.add(da)
-        db.add(
-            Configuration(
-                key=f"hd_address_count:{wallet_id}",
-                value="42",
-                updated_at=now,
-            )
-        )
+        for key in config_keys:
+            db.add(Configuration(key=key, value="42", updated_at=now))
         await db.commit()
 
     # Delete wallet via API
@@ -847,13 +849,14 @@ async def test_hd_wallet_remove_cascades(wallet_client, auth_headers, fresh_engi
         )
         assert da_result.scalar_one_or_none() is None
 
-        # Verify config key is gone
-        cfg_result = await db.execute(
-            select(Configuration).where(
-                Configuration.key == f"hd_address_count:{wallet_id}"
+        # Verify every per-wallet HD config key is gone
+        for key in config_keys:
+            cfg_result = await db.execute(
+                select(Configuration).where(Configuration.key == key)
             )
-        )
-        assert cfg_result.scalar_one_or_none() is None
+            assert cfg_result.scalar_one_or_none() is None, (
+                f"orphan config row left behind: {key}"
+            )
 
 
 @pytest.mark.asyncio
