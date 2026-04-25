@@ -164,7 +164,7 @@ describe("useWebSocket", () => {
     expect(mockDashboard.isRefreshing).toBe(true);
   });
 
-  it("dispatches refresh:completed → calls fetchSummary, sets isRefreshing=false, does NOT call fetchComposition/history", async () => {
+  it("dispatches refresh:completed → clears isRefreshing, calls fetchWallets, fetchSummary, fetchComposition", async () => {
     const useWebSocket = await importComposable();
     const ws = useWebSocket();
     ws.connect();
@@ -177,9 +177,10 @@ describe("useWebSocket", () => {
       timestamp: "2026-01-01T00:00:00Z",
     });
 
-    expect(mockFetchSummary).toHaveBeenCalled();
     expect(mockDashboard.isRefreshing).toBe(false);
-    expect(mockFetchComposition).not.toHaveBeenCalled();
+    expect(mockFetchWallets).toHaveBeenCalled();
+    expect(mockFetchSummary).toHaveBeenCalled();
+    expect(mockFetchComposition).toHaveBeenCalled();
     expect(mockFetchPortfolioHistory).not.toHaveBeenCalled();
     expect(mockFetchPriceHistory).not.toHaveBeenCalled();
   });
