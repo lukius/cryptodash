@@ -125,7 +125,9 @@ const chartOptions = {
     </div>
     <div class="chart-canvas-wrap" style="height: 240px">
       <Line v-if="chartData" :key="selectedRange" :data="chartData" :options="chartOptions" />
-      <div v-else class="empty-chart">Not enough data for this time range.</div>
+      <div v-else class="empty-chart">
+        {{ portfolioHistory === null ? "Loading, please wait..." : "Not enough data for this time range." }}
+      </div>
     </div>
   </div>
 </template>

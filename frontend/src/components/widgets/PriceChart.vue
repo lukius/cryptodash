@@ -146,7 +146,7 @@ const baseOptions = {
       <div class="chart-canvas-wrap" style="height: 180px">
         <Line v-if="btcChartData" :key="selectedRange" :data="btcChartData" :options="baseOptions" />
         <div v-else class="empty-chart">
-          Not enough data for this time range.
+          {{ priceHistory === null ? "Loading, please wait..." : "Not enough data for this time range." }}
         </div>
       </div>
     </div>
@@ -159,7 +159,7 @@ const baseOptions = {
       <div class="chart-canvas-wrap" style="height: 180px">
         <Line v-if="kasChartData" :key="selectedRange" :data="kasChartData" :options="baseOptions" />
         <div v-else class="empty-chart">
-          Not enough data for this time range.
+          {{ priceHistory === null ? "Loading, please wait..." : "Not enough data for this time range." }}
         </div>
       </div>
     </div>
