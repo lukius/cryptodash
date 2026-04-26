@@ -1061,6 +1061,32 @@ async def test_list_transactions_ordered_newest_first(wallet_client_with_db):
 
 
 @pytest.mark.asyncio
+async def test_list_transactions_timestamps_are_utc(wallet_client_with_db):
+    client, session_factory = wallet_client_with_db
+    resp = await client.post(
+        "/api/auth/setup",
+        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+    )
+    token = resp.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    wallet_resp = await add_wallet(client, headers, "BTC", VALID_BTC, "Test Wallet")
+    wallet_id = wallet_resp.json()["id"]
+
+    async with session_factory() as db:
+        db.add(_make_tx(wallet_id, "hash_tz", minutes_offset=0))
+        await db.commit()
+
+    resp = await client.get(
+        f"/api/wallets/{wallet_id}/transactions?page=1&page_size=10",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    tx = resp.json()["transactions"][0]
+    assert tx["timestamp"].endswith("Z"), "timestamp must be a UTC ISO string (ends with 'Z')"
+
+
+@pytest.mark.asyncio
 async def test_list_transactions_empty_wallet(wallet_client_with_db):
     client, session_factory = wallet_client_with_db
     resp = await client.post(

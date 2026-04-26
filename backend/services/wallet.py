@@ -277,7 +277,7 @@ class WalletService:
 
             if balance_snap is not None:
                 balance = str(balance_snap.balance)
-                last_updated = balance_snap.timestamp.isoformat()
+                last_updated = balance_snap.timestamp.isoformat() + 'Z'
                 if price_snap is not None and price_snap.price_usd is not None:
                     balance_usd = str(
                         Decimal(str(balance_snap.balance))
@@ -344,7 +344,7 @@ class WalletService:
                     "extended_key_type": extended_key_type,
                     "balance": balance,
                     "balance_usd": balance_usd,
-                    "created_at": wallet.created_at.isoformat(),
+                    "created_at": wallet.created_at.isoformat() + 'Z',
                     "last_updated": last_updated,
                     "warning": None,
                     "history_status": history_status,

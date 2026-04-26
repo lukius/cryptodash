@@ -41,10 +41,10 @@ import SettingsView from "@/views/SettingsView.vue";
 
 function makeApi(overrides: Record<string, unknown> = {}) {
   return {
-    get: vi.fn().mockResolvedValue({ refresh_interval_minutes: 15 }),
+    get: vi.fn().mockResolvedValue({ refresh_interval_minutes: 15, preferred_timezone: "UTC" }),
     post: vi.fn(),
     patch: vi.fn(),
-    put: vi.fn().mockResolvedValue({ refresh_interval_minutes: 15 }),
+    put: vi.fn().mockResolvedValue({ refresh_interval_minutes: 15, preferred_timezone: "UTC" }),
     delete: vi.fn(),
     ...overrides,
   };
@@ -80,6 +80,18 @@ describe("SettingsView", () => {
     vi.advanceTimersByTime(400);
     await flushPromises();
     expect(mockPush).toHaveBeenCalledWith("/");
+  });
+
+  it("renders a timezone selector with UTC selected by default", async () => {
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api);
+
+    const wrapper = mount(SettingsView);
+    await flushPromises();
+
+    const select = wrapper.find(".tz-select");
+    expect(select.exists()).toBe(true);
+    expect((select.element as HTMLSelectElement).value).toBe("UTC");
   });
 
   it("does not navigate if save fails", async () => {

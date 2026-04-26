@@ -90,15 +90,40 @@ describe('formatPercent', () => {
 })
 
 describe('formatTimestamp', () => {
-  it('formats an ISO string to a readable date-time', () => {
+  it('defaults to UTC when no timezone is given', () => {
+    // 2024-01-15T10:30:00Z is 10:30 AM UTC
     const result = formatTimestamp('2024-01-15T10:30:00Z')
+    expect(result).toContain('Jan')
+    expect(result).toContain('15')
     expect(result).toContain('2024')
-    expect(typeof result).toBe('string')
-    expect(result.length).toBeGreaterThan(0)
+  })
+
+  it('formats in UTC timezone', () => {
+    // 2024-06-15T23:00:00Z → 11:00 PM UTC
+    const result = formatTimestamp('2024-06-15T23:00:00Z', 'UTC')
+    expect(result).toContain('Jun')
+    expect(result).toContain('15')
+    expect(result).toContain('11:00')
+  })
+
+  it('formats in a different timezone (America/New_York, UTC-4 in summer)', () => {
+    // 2024-06-15T23:00:00Z = 7:00 PM EDT
+    const result = formatTimestamp('2024-06-15T23:00:00Z', 'America/New_York')
+    expect(result).toContain('Jun')
+    expect(result).toContain('15')
+    expect(result).toContain('07:00')
   })
 
   it('returns N/A for null', () => {
     expect(formatTimestamp(null)).toBe('N/A')
+  })
+
+  it('returns N/A for undefined', () => {
+    expect(formatTimestamp(undefined)).toBe('N/A')
+  })
+
+  it('returns N/A for an invalid timezone string', () => {
+    expect(formatTimestamp('2024-01-15T10:30:00Z', 'Not/A/Timezone')).toBe('N/A')
   })
 })
 

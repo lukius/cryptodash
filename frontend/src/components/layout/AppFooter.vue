@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { formatTimestamp } from "@/utils/format";
+import { useSettingsStore } from "@/stores/settings";
 
 const props = defineProps<{
   lastUpdated?: string | null;
   wsConnected?: boolean;
 }>();
+
+const settings = useSettingsStore();
 </script>
 
 <template>
   <footer class="app-footer">
     <span class="last-updated">
-      Last updated: {{ formatTimestamp(props.lastUpdated) }}
+      Last updated: {{ formatTimestamp(props.lastUpdated, settings.preferredTimezone) }}
     </span>
     <span
       class="ws-indicator"

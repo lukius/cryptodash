@@ -115,6 +115,14 @@ async def test_get_default_interval(settings_client, auth_headers):
     assert data["refresh_interval_minutes"] == 15
 
 
+@pytest.mark.asyncio
+async def test_get_default_timezone(settings_client, auth_headers):
+    """Default preferred timezone should be UTC."""
+    resp = await settings_client.get("/api/settings/", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["preferred_timezone"] == "UTC"
+
+
 # ---------------------------------------------------------------------------
 # PUT / — valid intervals
 # ---------------------------------------------------------------------------
@@ -237,10 +245,100 @@ async def test_update_broadcasts_settings_updated(settings_client, auth_headers)
 async def test_update_null_broadcasts_null_value_not_string(
     settings_client, auth_headers
 ):
-    """Disabling the scheduler should broadcast null value, not the string 'None'."""
+    """Broadcast payload value should be null (not the string 'None')."""
     await settings_client.put(
         "/api/settings/", json={"refresh_interval_minutes": None}, headers=auth_headers
     )
     call_args = settings_client.app.state.ws_manager.broadcast.call_args
     payload = call_args.args[1]
     assert payload["value"] is None, f"Expected None but got {payload['value']!r}"
+
+
+# ---------------------------------------------------------------------------
+# Timezone — GET default, PUT valid, persistence, invalid, independence
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_timezone(settings_client, auth_headers):
+    resp = await settings_client.put(
+        "/api/settings/",
+        json={"preferred_timezone": "America/New_York"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["preferred_timezone"] == "America/New_York"
+
+
+@pytest.mark.asyncio
+async def test_update_timezone_persists_across_get(settings_client, auth_headers):
+    await settings_client.put(
+        "/api/settings/",
+        json={"preferred_timezone": "Asia/Tokyo"},
+        headers=auth_headers,
+    )
+    resp = await settings_client.get("/api/settings/", headers=auth_headers)
+    assert resp.json()["preferred_timezone"] == "Asia/Tokyo"
+
+
+@pytest.mark.asyncio
+async def test_update_blank_timezone_rejected(settings_client, auth_headers):
+    resp = await settings_client.put(
+        "/api/settings/", json={"preferred_timezone": ""}, headers=auth_headers
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_too_long_timezone_rejected(settings_client, auth_headers):
+    resp = await settings_client.put(
+        "/api/settings/", json={"preferred_timezone": "A" * 65}, headers=auth_headers
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_timezone_only_update_does_not_restart_scheduler(
+    settings_client, auth_headers
+):
+    """A TZ-only PUT should not trigger a scheduler restart."""
+    await settings_client.put(
+        "/api/settings/",
+        json={"preferred_timezone": "Europe/London"},
+        headers=auth_headers,
+    )
+    settings_client.app.state.scheduler.restart.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interval_update_does_not_reset_timezone(settings_client, auth_headers):
+    """Updating interval only should leave the stored timezone untouched."""
+    await settings_client.put(
+        "/api/settings/",
+        json={"preferred_timezone": "Europe/Paris"},
+        headers=auth_headers,
+    )
+    await settings_client.put(
+        "/api/settings/",
+        json={"refresh_interval_minutes": 30},
+        headers=auth_headers,
+    )
+    resp = await settings_client.get("/api/settings/", headers=auth_headers)
+    assert resp.json()["preferred_timezone"] == "Europe/Paris"
+
+
+@pytest.mark.asyncio
+async def test_timezone_update_does_not_reset_interval(settings_client, auth_headers):
+    """Updating timezone only should leave the stored interval untouched."""
+    await settings_client.put(
+        "/api/settings/",
+        json={"refresh_interval_minutes": 5},
+        headers=auth_headers,
+    )
+    await settings_client.put(
+        "/api/settings/",
+        json={"preferred_timezone": "Asia/Singapore"},
+        headers=auth_headers,
+    )
+    resp = await settings_client.get("/api/settings/", headers=auth_headers)
+    assert resp.json()["refresh_interval_minutes"] == 5

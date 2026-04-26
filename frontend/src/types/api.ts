@@ -111,10 +111,12 @@ export interface PortfolioComposition {
 
 export interface SettingsResponse {
   refresh_interval_minutes: number | null;
+  preferred_timezone: string;
 }
 
 export interface SettingsUpdate {
-  refresh_interval_minutes: number | null;
+  refresh_interval_minutes?: number | null;
+  preferred_timezone?: string | null;
 }
 
 export interface TransactionResponse {

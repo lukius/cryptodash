@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { setActivePinia, createPinia } from "pinia";
 
@@ -395,5 +395,65 @@ describe("WalletDetailView — pagination scroll fix", () => {
     await flushPromises();
 
     expect(wrapper.find(".tx-table").classes()).not.toContain("tx-table-loading");
+  });
+});
+
+describe("WalletDetailView — copy address feedback", () => {
+  let writeTextMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: writeTextMock },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows 'Copied!' label after clicking the copy button", async () => {
+    vi.useFakeTimers();
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+    const store = useWalletsStore();
+    store.wallets = [makeIndividualWallet()];
+
+    const wrapper = mount(WalletDetailView);
+    await flushPromises();
+
+    const feedback = wrapper.find(".copy-feedback");
+    expect(feedback.classes()).not.toContain("visible");
+
+    await wrapper.find(".copy-btn").trigger("click");
+    await flushPromises();
+
+    expect(feedback.classes()).toContain("visible");
+    expect(writeTextMock).toHaveBeenCalledWith("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
+  });
+
+  it("hides 'Copied!' label after 1500 ms", async () => {
+    vi.useFakeTimers();
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+    const store = useWalletsStore();
+    store.wallets = [makeIndividualWallet()];
+
+    const wrapper = mount(WalletDetailView);
+    await flushPromises();
+
+    await wrapper.find(".copy-btn").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".copy-feedback").classes()).toContain("visible");
+
+    vi.advanceTimersByTime(1500);
+    await flushPromises();
+
+    expect(wrapper.find(".copy-feedback").classes()).not.toContain("visible");
   });
 });

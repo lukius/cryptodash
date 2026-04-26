@@ -37,7 +37,10 @@ export function formatPercent(
   return `${sign}${num.toFixed(2)}%`;
 }
 
-export function formatTimestamp(iso: string | null | undefined): string {
+export function formatTimestamp(
+  iso: string | null | undefined,
+  timeZone = "UTC",
+): string {
   if (iso === null || iso === undefined) return "N/A";
   try {
     const date = new Date(iso);
@@ -47,6 +50,7 @@ export function formatTimestamp(iso: string | null | undefined): string {
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone,
     });
   } catch {
     return "N/A";

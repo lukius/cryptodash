@@ -8,6 +8,7 @@ const settings = useSettingsStore();
 const router = useRouter();
 
 type IntervalOption = { label: string; value: number | null };
+type TimezoneOption = { label: string; value: string };
 
 const intervalOptions: IntervalOption[] = [
   { label: "5 minutes", value: 5 },
@@ -17,7 +18,35 @@ const intervalOptions: IntervalOption[] = [
   { label: "Disabled", value: null },
 ];
 
+const timezoneOptions: TimezoneOption[] = [
+  { label: "UTC (GMT+0)", value: "UTC" },
+  { label: "London (GMT+0/+1)", value: "Europe/London" },
+  { label: "Paris / Berlin (GMT+1/+2)", value: "Europe/Paris" },
+  { label: "Helsinki / Kyiv (GMT+2/+3)", value: "Europe/Helsinki" },
+  { label: "Moscow (GMT+3)", value: "Europe/Moscow" },
+  { label: "Dubai (GMT+4)", value: "Asia/Dubai" },
+  { label: "Karachi (GMT+5)", value: "Asia/Karachi" },
+  { label: "Kolkata (GMT+5:30)", value: "Asia/Kolkata" },
+  { label: "Bangkok (GMT+7)", value: "Asia/Bangkok" },
+  { label: "Singapore / Kuala Lumpur (GMT+8)", value: "Asia/Singapore" },
+  { label: "Shanghai / Beijing (GMT+8)", value: "Asia/Shanghai" },
+  { label: "Tokyo (GMT+9)", value: "Asia/Tokyo" },
+  { label: "Seoul (GMT+9)", value: "Asia/Seoul" },
+  { label: "Sydney (GMT+10/+11)", value: "Australia/Sydney" },
+  { label: "Auckland (GMT+12/+13)", value: "Pacific/Auckland" },
+  { label: "Honolulu (GMT-10)", value: "Pacific/Honolulu" },
+  { label: "Anchorage (GMT-9/-8)", value: "America/Anchorage" },
+  { label: "Los Angeles (GMT-8/-7)", value: "America/Los_Angeles" },
+  { label: "Denver (GMT-7/-6)", value: "America/Denver" },
+  { label: "Mexico City (GMT-6/-5)", value: "America/Mexico_City" },
+  { label: "Chicago (GMT-6/-5)", value: "America/Chicago" },
+  { label: "New York / Toronto (GMT-5/-4)", value: "America/New_York" },
+  { label: "São Paulo (GMT-3/-2)", value: "America/Sao_Paulo" },
+  { label: "Buenos Aires (GMT-3)", value: "America/Argentina/Buenos_Aires" },
+];
+
 const selected = ref<number | null>(settings.refreshIntervalMinutes);
+const selectedTimezone = ref<string>(settings.preferredTimezone);
 const fadingOut = ref(false);
 let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -25,6 +54,7 @@ onMounted(async () => {
   try {
     await settings.fetchSettings();
     selected.value = settings.refreshIntervalMinutes;
+    selectedTimezone.value = settings.preferredTimezone;
   } catch {
     // error shown via store.error
   }
@@ -37,7 +67,10 @@ onUnmounted(() => {
 async function save() {
   settings.error = null;
   try {
-    await settings.updateSettings({ refresh_interval_minutes: selected.value });
+    await settings.updateSettings({
+      refresh_interval_minutes: selected.value,
+      preferred_timezone: selectedTimezone.value,
+    });
     dismissTimer = setTimeout(() => {
       fadingOut.value = true;
       setTimeout(() => void router.push("/"), 400);
@@ -99,6 +132,22 @@ async function save() {
                 <span class="radio-label">{{ opt.label }}</span>
               </label>
             </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="tz-select">Preferred timezone</label>
+            <p class="field-hint">
+              Timestamps throughout CryptoDash will be displayed in this timezone.
+            </p>
+            <select id="tz-select" v-model="selectedTimezone" class="tz-select">
+              <option
+                v-for="opt in timezoneOptions"
+                :key="opt.value"
+                :value="opt.value"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
           </div>
 
           <div v-if="settings.error" class="error-msg">
@@ -261,6 +310,28 @@ async function save() {
   border-radius: var(--radius-sm);
   padding: 0.6rem 0.9rem;
   margin-bottom: 1rem;
+}
+
+.tz-select {
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.25rem;
+}
+
+.tz-select:focus {
+  outline: none;
+  border-color: var(--border-accent);
 }
 
 .btn-save {

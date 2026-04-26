@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useWalletsStore } from "@/stores/wallets";
+import { useSettingsStore } from "@/stores/settings";
 import { useApi, ApiError } from "@/composables/useApi";
 import AppHeader from "@/components/layout/AppHeader.vue";
 import CoinIcon from "@/components/common/CoinIcon.vue";
@@ -24,6 +25,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const walletsStore = useWalletsStore();
+const settingsStore = useSettingsStore();
 
 const walletId = computed(() => route.params.id as string);
 const wallet = computed<WalletResponse | null>(() =>
@@ -125,9 +127,13 @@ async function retryHistoryImport() {
   }
 }
 
+const copied = ref(false);
+
 async function copyAddress() {
   if (!wallet.value) return;
   await navigator.clipboard.writeText(wallet.value.address);
+  copied.value = true;
+  setTimeout(() => { copied.value = false; }, 1500);
 }
 
 function explorerUrl(txHash: string, network: string): string {
@@ -258,6 +264,7 @@ function onWalletRemoved() {
               <span class="wallet-address" :title="wallet.address">{{
                 formatWalletAddress(wallet.address, wallet.wallet_type)
               }}</span>
+              <span class="copy-feedback" :class="{ visible: copied }">Copied!</span>
               <button
                 class="copy-btn"
                 title="Copy address"
@@ -403,7 +410,7 @@ function onWalletRemoved() {
               </thead>
               <tbody>
                 <tr v-for="tx in transactions" :key="tx.id">
-                  <td class="tx-date">{{ formatTimestamp(tx.timestamp) }}</td>
+                  <td class="tx-date">{{ formatTimestamp(tx.timestamp, settingsStore.preferredTimezone) }}</td>
                   <td>
                     <a
                       class="tx-hash"
@@ -631,6 +638,18 @@ function onWalletRemoved() {
   border-radius: 8px;
   border: 1px solid var(--border);
   cursor: default;
+}
+
+.copy-feedback {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.copy-feedback.visible {
+  opacity: 1;
 }
 
 .copy-btn {

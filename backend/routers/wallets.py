@@ -119,7 +119,7 @@ async def add_wallet(
         extended_key_type=getattr(wallet, "extended_key_type", None),
         balance=None,
         balance_usd=None,
-        created_at=wallet.created_at.isoformat(),
+        created_at=wallet.created_at.isoformat() + 'Z',
         last_updated=None,
         warning=None,
         history_status="pending",
@@ -160,7 +160,7 @@ async def update_wallet_tag(
         extended_key_type=getattr(wallet, "extended_key_type", None),
         balance=None,
         balance_usd=None,
-        created_at=wallet.created_at.isoformat(),
+        created_at=wallet.created_at.isoformat() + 'Z',
         last_updated=None,
         warning=None,
         history_status="pending",
@@ -215,7 +215,7 @@ async def list_transactions(
                 amount=tx.amount,
                 balance_after=tx.balance_after,
                 block_height=tx.block_height,
-                timestamp=tx.timestamp.isoformat(),
+                timestamp=tx.timestamp.isoformat() + 'Z',
             )
             for tx in transactions
         ],

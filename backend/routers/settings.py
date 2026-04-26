@@ -14,6 +14,8 @@ router = APIRouter(
 
 _DEFAULT_REFRESH_INTERVAL = 15
 _CONFIG_KEY = "refresh_interval_minutes"
+_TZ_KEY = "preferred_timezone"
+_DEFAULT_TIMEZONE = "UTC"
 
 
 @router.get("/")
@@ -22,10 +24,15 @@ async def get_settings(
     db: AsyncSession = Depends(get_db),
 ) -> SettingsResponse:
     config_repo = ConfigRepository(db)
-    value = await config_repo.get_int(_CONFIG_KEY)
-    if value is None:
-        value = _DEFAULT_REFRESH_INTERVAL
-    return SettingsResponse(refresh_interval_minutes=value)
+    raw_interval = await config_repo.get(_CONFIG_KEY)
+    if raw_interval is None:
+        interval = _DEFAULT_REFRESH_INTERVAL
+    elif raw_interval == "":
+        interval = None
+    else:
+        interval = int(raw_interval)
+    tz = await config_repo.get(_TZ_KEY) or _DEFAULT_TIMEZONE
+    return SettingsResponse(refresh_interval_minutes=interval, preferred_timezone=tz)
 
 
 @router.put("/")
@@ -37,25 +44,38 @@ async def update_settings(
 ) -> SettingsResponse:
     config_repo = ConfigRepository(db)
 
-    if body.refresh_interval_minutes is None:
-        await config_repo.set(_CONFIG_KEY, "")
-    else:
-        await config_repo.set(_CONFIG_KEY, str(body.refresh_interval_minutes))
+    if "refresh_interval_minutes" in body.model_fields_set:
+        if body.refresh_interval_minutes is None:
+            await config_repo.set(_CONFIG_KEY, "")
+        else:
+            await config_repo.set(_CONFIG_KEY, str(body.refresh_interval_minutes))
+
+    if "preferred_timezone" in body.model_fields_set and body.preferred_timezone:
+        await config_repo.set(_TZ_KEY, body.preferred_timezone)
 
     await db.commit()
 
-    scheduler = request.app.state.scheduler
-    await scheduler.restart(body.refresh_interval_minutes)
+    if "refresh_interval_minutes" in body.model_fields_set:
+        scheduler = request.app.state.scheduler
+        await scheduler.restart(body.refresh_interval_minutes)
 
     ws_manager = request.app.state.ws_manager
-    await ws_manager.broadcast(
-        "settings:updated",
-        {
-            "key": _CONFIG_KEY,
-            "value": str(body.refresh_interval_minutes)
-            if body.refresh_interval_minutes is not None
-            else None,
-        },
+    await ws_manager.broadcast("settings:updated", {"key": "settings", "value": None})
+
+    # Build response using provided values; read back others from DB
+    if "refresh_interval_minutes" in body.model_fields_set:
+        resp_interval = body.refresh_interval_minutes
+    else:
+        raw = await config_repo.get(_CONFIG_KEY)
+        if raw is None:
+            resp_interval = _DEFAULT_REFRESH_INTERVAL
+        elif raw == "":
+            resp_interval = None
+        else:
+            resp_interval = int(raw)
+
+    resp_tz = body.preferred_timezone if "preferred_timezone" in body.model_fields_set else (
+        await config_repo.get(_TZ_KEY) or _DEFAULT_TIMEZONE
     )
 
-    return SettingsResponse(refresh_interval_minutes=body.refresh_interval_minutes)
+    return SettingsResponse(refresh_interval_minutes=resp_interval, preferred_timezone=resp_tz)

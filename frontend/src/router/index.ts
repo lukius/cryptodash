@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { useSettingsStore } from "@/stores/settings";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -66,6 +67,10 @@ router.beforeEach(async (to) => {
   // Authenticated users should not access /login or /setup
   if (auth.isAuthenticated && PUBLIC_ROUTES.includes(to.path)) {
     return "/";
+  }
+
+  if (auth.isAuthenticated) {
+    await useSettingsStore().init();
   }
 });
 
