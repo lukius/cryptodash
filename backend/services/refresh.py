@@ -2,6 +2,8 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
+from backend.utils import utc_isoformat
 from decimal import Decimal
 from uuid import uuid4
 
@@ -111,7 +113,7 @@ class RefreshService:
                 {
                     "success_count": success_count,
                     "failure_count": failure_count,
-                    "timestamp": refresh_result.timestamp.isoformat(),
+                    "timestamp": utc_isoformat(refresh_result.timestamp),
                 },
             )
 
@@ -275,7 +277,7 @@ class RefreshService:
                         {
                             "wallet_id": wallet.id,
                             "balance": str(balance),
-                            "timestamp": now.isoformat(),
+                            "timestamp": utc_isoformat(now),
                             "success": True,
                         },
                     )

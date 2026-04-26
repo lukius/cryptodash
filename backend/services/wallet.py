@@ -3,6 +3,8 @@ import hashlib
 import logging
 import re
 from datetime import datetime, timezone
+
+from backend.utils import utc_isoformat
 from decimal import Decimal
 from typing import Literal
 from uuid import uuid4
@@ -277,7 +279,7 @@ class WalletService:
 
             if balance_snap is not None:
                 balance = str(balance_snap.balance)
-                last_updated = balance_snap.timestamp.isoformat() + 'Z'
+                last_updated = utc_isoformat(balance_snap.timestamp)
                 if price_snap is not None and price_snap.price_usd is not None:
                     balance_usd = str(
                         Decimal(str(balance_snap.balance))
@@ -344,7 +346,7 @@ class WalletService:
                     "extended_key_type": extended_key_type,
                     "balance": balance,
                     "balance_usd": balance_usd,
-                    "created_at": wallet.created_at.isoformat() + 'Z',
+                    "created_at": utc_isoformat(wallet.created_at),
                     "last_updated": last_updated,
                     "warning": None,
                     "history_status": history_status,

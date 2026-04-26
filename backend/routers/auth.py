@@ -3,6 +3,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.dependencies import bearer_scheme, get_auth_token, get_db
+from backend.utils import utc_isoformat
 from backend.core.exceptions import (
     AccountExistsError,
     InvalidCredentialsError,
@@ -56,7 +57,7 @@ async def setup_account(
             detail="An account already exists.",
         )
     await db.commit()
-    return LoginResponse(token=session.token, expires_at=session.expires_at.isoformat())
+    return LoginResponse(token=session.token, expires_at=utc_isoformat(session.expires_at))
 
 
 @router.post("/login")
@@ -81,7 +82,7 @@ async def login(
             detail="Invalid username or password.",
         )
     await db.commit()
-    return LoginResponse(token=session.token, expires_at=session.expires_at.isoformat())
+    return LoginResponse(token=session.token, expires_at=utc_isoformat(session.expires_at))
 
 
 @router.post("/logout")

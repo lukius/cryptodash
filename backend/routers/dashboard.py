@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.dependencies import get_current_user, get_db
+from backend.utils import utc_isoformat
 from backend.models.user import User
 from backend.repositories.snapshot import (
     BalanceSnapshotRepository,
@@ -143,7 +144,7 @@ async def get_summary(
         change_24h_pct=str(change_24h_pct) if change_24h_pct is not None else None,
         btc_price_usd=str(btc_price) if btc_price is not None else None,
         kas_price_usd=str(kas_price) if kas_price is not None else None,
-        last_updated=last_updated.isoformat() + 'Z' if last_updated is not None else None,
+        last_updated=utc_isoformat(last_updated) if last_updated is not None else None,
     )
 
 
@@ -234,7 +235,7 @@ async def get_portfolio_history(
                 display_value = total_value / Decimal(kas_snap.price_usd)
             data_points.append(
                 HistoryDataPoint(
-                    timestamp=ts.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    timestamp=utc_isoformat(ts),
                     value=str(display_value),
                 )
             )
@@ -291,7 +292,7 @@ async def get_wallet_history(
 
         data_points.append(
             HistoryDataPoint(
-                timestamp=ts.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                timestamp=utc_isoformat(ts),
                 value=str(value),
             )
         )
@@ -331,12 +332,9 @@ async def get_price_history(
     def to_data_points(snaps) -> list[HistoryDataPoint]:
         result = []
         for snap in snaps:
-            ts = snap.timestamp
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
             result.append(
                 HistoryDataPoint(
-                    timestamp=ts.isoformat(),
+                    timestamp=utc_isoformat(snap.timestamp),
                     value=snap.price_usd,
                 )
             )
@@ -413,7 +411,7 @@ async def trigger_refresh(
         "success_count": result.success_count,
         "failure_count": result.failure_count,
         "errors": result.errors,
-        "timestamp": result.timestamp.isoformat(),
+        "timestamp": utc_isoformat(result.timestamp),
     }
 
     if result.skipped:

@@ -1,6 +1,8 @@
 import logging
 from datetime import datetime, timezone
 
+from backend.utils import utc_isoformat
+
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ class ConnectionManager:
         message = {
             "event": event,
             "data": data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": utc_isoformat(datetime.now(timezone.utc)),
         }
         dead: list[WebSocket] = []
         for ws in self._connections:
