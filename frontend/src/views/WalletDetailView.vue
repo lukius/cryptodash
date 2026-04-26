@@ -18,6 +18,7 @@ import {
   formatBtc,
   formatKas,
   formatTimestamp,
+  formatTimestampCompact,
   truncateAddress,
   formatWalletAddress,
 } from "@/utils/format";
@@ -398,6 +399,7 @@ function onWalletRemoved() {
             No transactions yet.
           </div>
           <template v-else>
+            <div class="tx-table-wrap">
             <table :class="['tx-table', { 'tx-table-loading': txPageChanging }]">
               <thead>
                 <tr>
@@ -410,7 +412,10 @@ function onWalletRemoved() {
               </thead>
               <tbody>
                 <tr v-for="tx in transactions" :key="tx.id">
-                  <td class="tx-date">{{ formatTimestamp(tx.timestamp, settingsStore.preferredTimezone) }}</td>
+                  <td class="tx-date">
+                    <span class="date-full">{{ formatTimestamp(tx.timestamp, settingsStore.preferredTimezone) }}</span>
+                    <span class="date-compact">{{ formatTimestampCompact(tx.timestamp, settingsStore.preferredTimezone) }}</span>
+                  </td>
                   <td>
                     <a
                       class="tx-hash"
@@ -422,7 +427,7 @@ function onWalletRemoved() {
                   </td>
                   <td>
                     <span :class="['tx-type-badge', txType(tx.amount)]">
-                      {{ txType(tx.amount) === "in" ? "↑ IN" : "↓ OUT" }}
+                      {{ txType(tx.amount) === "in" ? "↑" : "↓" }}<span class="type-text">{{ txType(tx.amount) === "in" ? " IN" : " OUT" }}</span>
                     </span>
                   </td>
                   <td :class="['tx-amount', txAmountClass(tx.amount)]">
@@ -438,6 +443,7 @@ function onWalletRemoved() {
                 </tr>
               </tbody>
             </table>
+            </div>
             <div class="tx-pagination">
               <span class="tx-page-info">{{ pageRangeText }}</span>
               <div class="tx-page-controls">
@@ -510,6 +516,7 @@ function onWalletRemoved() {
 .page {
   min-height: 100vh;
   background: var(--bg);
+  overflow-x: clip;
 }
 
 .main {
@@ -916,6 +923,19 @@ function onWalletRemoved() {
   text-align: right;
 }
 
+.tx-table-wrap {
+  overflow-x: auto;
+}
+
+.tx-table thead th,
+.tx-table tbody td {
+  white-space: nowrap;
+}
+
+.date-compact {
+  display: none;
+}
+
 .tx-table-loading {
   opacity: 0.4;
   pointer-events: none;
@@ -1066,6 +1086,10 @@ function onWalletRemoved() {
 }
 
 @media (max-width: 768px) {
+  .main {
+    padding: 1rem;
+  }
+
   .wallet-hero {
     grid-template-columns: 1fr;
   }
@@ -1080,8 +1104,16 @@ function onWalletRemoved() {
     gap: 1.5rem;
   }
 
-  .tx-card {
-    overflow-x: auto;
+  .date-full {
+    display: none;
+  }
+
+  .date-compact {
+    display: inline;
+  }
+
+  .type-text {
+    display: none;
   }
 }
 </style>

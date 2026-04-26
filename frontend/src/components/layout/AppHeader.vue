@@ -126,4 +126,15 @@ async function onLogout() {
   background: var(--accent-dim);
   box-shadow: 0 0 20px rgba(73, 234, 203, 0.08);
 }
+
+@media (max-width: 768px) {
+  .logo-title {
+    display: none;
+  }
+
+  .header-btn {
+    padding: 0.4rem 0.55rem;
+    font-size: 0.75rem;
+  }
+}
 </style>

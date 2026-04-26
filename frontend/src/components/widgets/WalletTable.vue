@@ -463,4 +463,22 @@ function navigateToWallet(wallet: WalletResponse) {
   opacity: 0;
   max-height: 0;
 }
+
+@media (max-width: 768px) {
+  .card-header {
+    padding: 1rem 0.75rem;
+  }
+
+  .wallet-table thead th {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .wallet-table tbody td {
+    padding: 0.75rem 0.75rem;
+  }
+
+  .expand-cell {
+    padding: 0 0.75rem !important;
+  }
+}
 </style>

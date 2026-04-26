@@ -57,6 +57,29 @@ export function formatTimestamp(
   }
 }
 
+export function formatTimestampCompact(
+  iso: string | null | undefined,
+  timeZone = "UTC",
+): string {
+  if (!iso) return "N/A";
+  try {
+    const d = new Date(iso);
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone,
+    });
+    const parts = fmt.formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+    return `${get("month")}/${get("day")} ${get("hour")}:${get("minute")}`;
+  } catch {
+    return "N/A";
+  }
+}
+
 export function truncateAddress(addr: string, start = 6, end = 4): string {
   if (addr.length <= start + end) return addr;
   return `${addr.slice(0, start)}...${addr.slice(-end)}`;

@@ -5,6 +5,7 @@ import {
   formatKas,
   formatPercent,
   formatTimestamp,
+  formatTimestampCompact,
   truncateAddress,
   formatWalletAddress,
 } from '@/utils/format'
@@ -124,6 +125,40 @@ describe('formatTimestamp', () => {
 
   it('returns N/A for an invalid timezone string', () => {
     expect(formatTimestamp('2024-01-15T10:30:00Z', 'Not/A/Timezone')).toBe('N/A')
+  })
+})
+
+describe('formatTimestampCompact', () => {
+  it('returns MM/DD HH:mm in UTC by default', () => {
+    // 2024-01-15T10:30:00Z → 01/15 10:30 UTC
+    expect(formatTimestampCompact('2024-01-15T10:30:00Z')).toBe('01/15 10:30')
+  })
+
+  it('uses 24-hour time format for PM hours', () => {
+    // 2024-06-15T23:00:00Z → 06/15 23:00 UTC
+    expect(formatTimestampCompact('2024-06-15T23:00:00Z', 'UTC')).toBe('06/15 23:00')
+  })
+
+  it('applies the given timezone offset', () => {
+    // 2024-06-15T23:00:00Z = 19:00 EDT (America/New_York is UTC-4 in summer)
+    expect(formatTimestampCompact('2024-06-15T23:00:00Z', 'America/New_York')).toBe('06/15 19:00')
+  })
+
+  it('pads single-digit month and day with leading zero', () => {
+    // 2024-03-05T08:05:00Z → 03/05 08:05
+    expect(formatTimestampCompact('2024-03-05T08:05:00Z', 'UTC')).toBe('03/05 08:05')
+  })
+
+  it('returns N/A for null', () => {
+    expect(formatTimestampCompact(null)).toBe('N/A')
+  })
+
+  it('returns N/A for undefined', () => {
+    expect(formatTimestampCompact(undefined)).toBe('N/A')
+  })
+
+  it('returns N/A for an invalid timezone string', () => {
+    expect(formatTimestampCompact('2024-01-15T10:30:00Z', 'Not/A/Timezone')).toBe('N/A')
   })
 })
 
