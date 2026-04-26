@@ -265,8 +265,9 @@ async def test_summary_with_wallets(dashboard_client, auth_headers, seeded_db):
     total = Decimal(data["total_value_usd"])
     assert total == btc_val + kas_val
 
-    # last_updated should be set
+    # last_updated should be a UTC ISO string so browsers parse it correctly
     assert data["last_updated"] is not None
+    assert data["last_updated"].endswith("Z")
 
 
 @pytest.mark.asyncio
@@ -381,10 +382,16 @@ async def test_portfolio_history_returns_data_points(
     assert isinstance(data["data_points"], list)
     assert len(data["data_points"]) > 0
 
-    # Each data point has timestamp and value
+    # Each data point has a parseable UTC timestamp and a value
     dp = data["data_points"][0]
     assert "timestamp" in dp
     assert "value" in dp
+    # Must be "YYYY-MM-DDTHH:MM:SSZ" — not the double-encoded "+00:00Z" form
+    ts = dp["timestamp"]
+    assert ts.endswith("Z") and not ts.endswith("+00:00Z"), (
+        f"timestamp has invalid format: {ts!r}"
+    )
+    datetime.fromisoformat(ts.replace("Z", "+00:00"))  # must be parseable
 
 
 @pytest.mark.asyncio
@@ -452,6 +459,12 @@ async def test_wallet_history_native(dashboard_client, auth_headers, seeded_db):
     assert len(data["data_points"]) > 0
     # Native value should be 1.0 BTC
     assert Decimal(data["data_points"][0]["value"]) == Decimal("1.0")
+    # Timestamp must be "...Z", not the double-encoded "+00:00Z" form
+    ts = data["data_points"][0]["timestamp"]
+    assert ts.endswith("Z") and not ts.endswith("+00:00Z"), (
+        f"wallet history timestamp has invalid format: {ts!r}"
+    )
+    datetime.fromisoformat(ts.replace("Z", "+00:00"))  # must be parseable
 
 
 @pytest.mark.asyncio

@@ -143,7 +143,7 @@ async def get_summary(
         change_24h_pct=str(change_24h_pct) if change_24h_pct is not None else None,
         btc_price_usd=str(btc_price) if btc_price is not None else None,
         kas_price_usd=str(kas_price) if kas_price is not None else None,
-        last_updated=last_updated.isoformat() if last_updated is not None else None,
+        last_updated=last_updated.isoformat() + 'Z' if last_updated is not None else None,
     )
 
 
@@ -234,7 +234,7 @@ async def get_portfolio_history(
                 display_value = total_value / Decimal(kas_snap.price_usd)
             data_points.append(
                 HistoryDataPoint(
-                    timestamp=ts.isoformat(),
+                    timestamp=ts.strftime('%Y-%m-%dT%H:%M:%SZ'),
                     value=str(display_value),
                 )
             )
@@ -291,7 +291,7 @@ async def get_wallet_history(
 
         data_points.append(
             HistoryDataPoint(
-                timestamp=ts.isoformat(),
+                timestamp=ts.strftime('%Y-%m-%dT%H:%M:%SZ'),
                 value=str(value),
             )
         )
