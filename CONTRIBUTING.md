@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to CryptoDash. This document covers how to set up a development environment, coding conventions, testing requirements, and the merge-request process.
+Thank you for your interest in contributing to CryptoDash. This document covers how to set up a development environment, coding conventions, testing requirements, and the pull-request process.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ Thank you for your interest in contributing to CryptoDash. This document covers 
 **Prerequisites:** Python 3.11+, Node.js 18+
 
 ```bash
-git clone https://gitlab.com/lukius/cryptodash.git
+git clone https://github.com/lukius/cryptodash.git
 cd cryptodash
 
 # Python — create virtualenv and install dev deps
@@ -185,7 +185,7 @@ alembic current
 
 Rules:
 - Never edit existing migration files — always add a new revision
-- Test that migrations apply cleanly on a fresh database before opening an MR
+- Test that migrations apply cleanly on a fresh database before opening a PR
 - The app applies migrations automatically on startup via `alembic upgrade head`
 
 ---
@@ -218,7 +218,7 @@ Rules:
 
 ## Submitting Changes
 
-This project is hosted on GitLab. Use `glab` (not `gh`) for all remote operations.
+This project is hosted on GitHub. Use `gh` for all remote operations.
 
 1. Fork the repository and create a feature branch:
    ```bash
@@ -226,13 +226,13 @@ This project is hosted on GitLab. Use `glab` (not `gh`) for all remote operation
    ```
 2. Make your changes with appropriate tests.
 3. Ensure the full test suite passes and linting is clean.
-4. Push your branch and open a merge request:
+4. Push your branch and open a pull request:
    ```bash
-   glab mr create
+   gh pr create
    ```
-5. Describe what the MR does and why in the MR description. Reference any related issues.
+5. Describe what the PR does and why in the PR description. Reference any related issues.
 
-A maintainer will review and merge. Please keep MRs focused — one logical change per MR.
+A maintainer will review and merge. Please keep PRs focused — one logical change per PR.
 
 ---
 

@@ -59,5 +59,5 @@ Initial release of CryptoDash.
 - Backend: 20 pytest test modules covering auth, wallets, dashboard, settings, refresh, history, scheduler, security, repositories, models, database, exception handlers, and all three external API clients
 - Frontend: Vitest component and store tests (WalletTable, AddWalletDialog, TimeRangeSelector, auth store, wallets store)
 
-[Unreleased]: https://gitlab.com/lukius/cryptodash/-/compare/v1.0.0...HEAD
-[1.0.0]: https://gitlab.com/lukius/cryptodash/-/tags/v1.0.0
+[Unreleased]: https://github.com/lukius/cryptodash/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/lukius/cryptodash/releases/tag/v1.0.0

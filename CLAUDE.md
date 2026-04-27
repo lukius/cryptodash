@@ -48,9 +48,9 @@ Read `specs/` for detailed functional and technical specs before implementing fe
 
 ## Git & Remote
 
-- **Hosted on GitLab** (private): `gitlab.com:lukius/cryptodash`
-- Use `glab` (not `gh`) for all remote operations: MRs, issues, CI, etc.
-- Example: `glab mr create`, `glab issue list`, `glab ci status`
+- **Hosted on GitHub**: `github.com:lukius/cryptodash`
+- Use `gh` for all remote operations: PRs, issues, CI, etc.
+- Example: `gh pr create`, `gh issue list`, `gh run list`
 
 ## Development Rules
 

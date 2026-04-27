@@ -35,7 +35,7 @@ External data sources: [Mempool.space](https://mempool.space) (Bitcoin individua
 
 ```bash
 # 1. Clone
-git clone https://gitlab.com/lukius/cryptodash.git
+git clone https://github.com/lukius/cryptodash.git
 cd cryptodash
 
 # 2. Backend — create and activate a virtualenv, then install deps
@@ -174,7 +174,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on maintaining `CLAUDE.md`
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding conventions, testing requirements, and the merge-request process.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding conventions, testing requirements, and the pull-request process.
 
 ## License
 
