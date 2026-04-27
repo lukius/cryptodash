@@ -1,7 +1,5 @@
 # CryptoDash
 
-<!-- One-paragraph description of what this project is and who it's for. Update as scope solidifies. -->
-
 ## Project Structure
 
 ```
@@ -19,11 +17,10 @@ cryptodash/
 │   └── mockups/           # Interactive HTML mockups (visual source of truth for UI)
 ├── backend/               # Python 3.11+ / FastAPI backend
 │   ├── app.py             # FastAPI app factory (create_app), lifespan, exception handlers
-│   ├── run.py             # Entry point: python run.py
 │   ├── routers/           # HTTP + WebSocket handlers (auth, wallets, dashboard, settings, ws)
 │   ├── services/          # Business logic (auth, wallet, history, refresh)
 │   ├── repositories/      # SQLAlchemy async DB access
-│   ├── clients/           # External API clients (Bitcoin, Kaspa, CoinGecko)
+│   ├── clients/           # External API clients (Bitcoin, Kaspa, CoinGecko, Blockbook/xpub)
 │   ├── models/            # SQLAlchemy ORM models
 │   ├── schemas/           # Pydantic request/response models
 │   └── core/              # Cross-cutting: scheduler, WebSocket manager, dependencies, exceptions
@@ -78,6 +75,3 @@ Read `specs/` for detailed functional and technical specs before implementing fe
 - **bcrypt directly, not via passlib** — `passlib==1.7.4` is incompatible with `bcrypt>=4.x`: passlib's internal wrap-bug detection hashes a 200-byte string, but newer bcrypt rejects passwords over 72 bytes. `requirements.txt` uses `bcrypt==5.0.0` directly. The spec's "bcrypt via passlib" recommendation cannot be followed; the `bcrypt` library directly produces equivalent `$2b$12$...` hashes.
 - **HD wallets use Trezor Blockbook (`btc2.trezor.io`), individual BTC wallets use mempool.space** — Blockbook accepts xpub/ypub/zpub natively and returns balance + per-address breakdown + tx history for the entire wallet in one call, eliminating the rate-limit pressure that broke the per-address mempool.space approach. The spec's original blockchain.info choice does not work for BIP84 zpubs (it derives only legacy P2PKH addresses from an xpub). The User-Agent `CryptoDash/1.0` (set in `BaseClient`) is required — generic UAs like `Mozilla/5.0` are blocked by Cloudflare on Blockbook xpub paths.
 
-## Caveats & Gotchas
-
-<!-- Add entries here as they come up during development. Things that tripped you up, non-obvious behavior, workarounds for known issues. -->

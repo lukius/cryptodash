@@ -1,10 +1,15 @@
+<p align="center">
+  <img src="frontend/public/favicon.svg" width="80" alt="CryptoDash">
+</p>
+
 # CryptoDash
 
-A self-hosted personal cryptocurrency portfolio dashboard. Track wallet balances and portfolio value across Bitcoin and Kaspa networks — no account registration, no private keys, no external service required to run.
+A self-hosted personal cryptocurrency portfolio dashboard. Track wallet balances and portfolio value across Bitcoin and Kaspa — no account registration, no private keys, no third-party cloud required.
 
 ## Features
 
 - **Multi-wallet tracking** — add any number of Bitcoin and Kaspa addresses; balances are fetched from public blockchain APIs
+- **HD wallet support** — add an extended public key (xpub / ypub / zpub) to track an entire hierarchical-deterministic wallet with per-address breakdown
 - **Portfolio dashboard** — total USD value, per-currency balances, composition pie chart, and historical value chart
 - **Price history** — BTC/USD and KAS/USD charts sourced from CoinGecko
 - **Wallet detail view** — per-wallet balance history and full transaction timeline
@@ -22,7 +27,7 @@ A self-hosted personal cryptocurrency portfolio dashboard. Track wallet balances
 | Database | SQLite (WAL mode) via aiosqlite |
 | Build / dev | Vite, Vitest, pytest, ruff |
 
-External data sources: [Mempool.space](https://mempool.space) (Bitcoin), [api.kaspa.org](https://api.kaspa.org) (Kaspa), [CoinGecko](https://www.coingecko.com) (prices).
+External data sources: [Mempool.space](https://mempool.space) (Bitcoin individual addresses), [Trezor Blockbook](https://trezor.io) (HD wallets / xpub), [api.kaspa.org](https://api.kaspa.org) (Kaspa), [CoinGecko](https://www.coingecko.com) (prices).
 
 ## Quick Start
 
@@ -92,7 +97,7 @@ cryptodash/
 ├── backend/
 │   ├── app.py              # FastAPI app factory + lifespan
 │   ├── config.py           # Environment-variable configuration
-│   ├── clients/            # External API clients (Bitcoin, Kaspa, CoinGecko)
+│   ├── clients/            # External API clients (Bitcoin, Kaspa, CoinGecko, Blockbook)
 │   ├── core/               # Scheduler, WebSocket manager, security, DI
 │   ├── models/             # SQLAlchemy ORM models
 │   ├── repositories/       # Database access layer
@@ -108,8 +113,9 @@ cryptodash/
 │   ├── utils/              # Formatting and address validation helpers
 │   └── views/              # Page-level components
 ├── migrations/             # Alembic database migrations
-├── specs/                  # Functional spec, tech spec, UI mockups
-└── tests/                  # pytest (backend) + Vitest (frontend) test suites
+├── specs/                  # Functional spec, tech spec, UI mockups (source of truth)
+├── tests/                  # pytest (backend) + Vitest (frontend) test suites
+└── .claude/                # Claude Code agent team and custom skills
 ```
 
 ## API Overview
@@ -126,12 +132,15 @@ The REST API is available under `/api`. An interactive OpenAPI interface is serv
 | POST | `/api/wallets/` | Add wallet |
 | PATCH | `/api/wallets/{id}` | Update wallet tag |
 | DELETE | `/api/wallets/{id}` | Remove wallet |
+| GET | `/api/wallets/{id}/transactions` | Transaction timeline for a wallet |
+| POST | `/api/wallets/{id}/retry-history` | Retry failed history import |
 | GET | `/api/dashboard/summary` | Portfolio totals |
 | GET | `/api/dashboard/portfolio-history` | Historical portfolio value |
+| GET | `/api/dashboard/wallet-history/{id}` | Per-wallet balance history |
 | GET | `/api/dashboard/price-history` | BTC/USD and KAS/USD price history |
-| GET | `/api/dashboard/wallet/{id}/history` | Per-wallet balance history |
-| GET | `/api/dashboard/wallet/{id}/transactions` | Transaction timeline |
-| GET/PUT | `/api/settings` | Read / update settings |
+| GET | `/api/dashboard/composition` | Portfolio composition breakdown |
+| POST | `/api/dashboard/refresh` | Trigger a manual refresh |
+| GET/PUT | `/api/settings/` | Read / update settings |
 | WS | `/api/ws` | Real-time refresh events |
 
 ## Running Tests
@@ -141,9 +150,31 @@ The REST API is available under `/api`. An interactive OpenAPI interface is serv
 pip install -r requirements-dev.txt
 pytest tests/backend/ -v
 
+# Backend lint + format check
+ruff check backend/ tests/
+ruff format --check backend/ tests/
+
 # Frontend
 cd frontend && npm run test
+cd frontend && npm run lint
 ```
+
+## AI-Assisted Development
+
+CryptoDash is primarily developed with [Claude Code](https://claude.ai/code), though `CLAUDE.md` and the specs in `specs/` make the project approachable by any AI assistant.
+
+- **`CLAUDE.md`** — project context file: build commands, key design decisions, known gotchas. Any AI assistant can read this to get up to speed quickly.
+- **`.claude/agents/`** — a Claude Code agent team (project manager, developer, tech lead, QA analyst) for coordinated multi-step work
+- **`.claude/skills/`** — Claude Code custom workflows:
+  - `/develop-feature` — full agent-team flow: plan → TDD → code review → QA
+  - `/generate-func-spec` — generate a functional spec from a brief
+  - `/generate-tech-spec` — generate a technical spec from a functional spec
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on maintaining `CLAUDE.md` and using the agent workflow.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding conventions, testing requirements, and the merge-request process.
 
 ## License
 

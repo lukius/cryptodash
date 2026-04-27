@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoDash — Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060b14;
+    --bg-card: rgba(255, 255, 255, 0.025);
+    --bg-card-hover: rgba(255, 255, 255, 0.045);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-accent: rgba(73, 234, 203, 0.2);
+    --text: rgba(255, 255, 255, 0.87);
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --text-muted: rgba(255, 255, 255, 0.38);
+    --accent: #49eacb;
+    --accent-dim: rgba(73, 234, 203, 0.1);
+    --accent-glow: rgba(73, 234, 203, 0.35);
+    --green: #00e676;
+    --green-dim: rgba(0, 230, 118, 0.08);
+    --btc-color: #F7931A;
+    --kas-color: #49eacb;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --header-h: 64px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ========== HEADER ========== */
+  .header {
+    position: sticky; top: 0; z-index: 100;
+    height: var(--header-h);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1.5rem;
+    background: linear-gradient(90deg, rgba(6,11,20,0.95), rgba(10,18,35,0.95) 40%, rgba(20,35,55,0.9));
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), #3b82f6);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; color: var(--bg);
+    box-shadow: 0 0 24px var(--accent-glow);
+  }
+  .logo-text { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.03em; color: #fff; }
+  .logo-text .cr { color: var(--btc-color); }
+  .logo-text .da { color: var(--kas-color); }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  .header-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0.5rem 0.85rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: inherit; font-size: 0.8rem; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+    text-decoration: none;
+  }
+  .header-btn:hover { border-color: rgba(255,255,255,0.15); color: var(--text); background: rgba(255,255,255,0.03); }
+  .header-btn svg { width: 16px; height: 16px; }
+
+  /* ========== MAIN ========== */
+  .main {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  /* ========== PAGE TITLE ========== */
+  .page-title-block {
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+  .page-title {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #fff;
+    line-height: 1.2;
+  }
+  .page-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+    font-weight: 400;
+  }
+
+  /* ========== SETTINGS SECTION ========== */
+  .settings-section {
+    margin-bottom: 2.25rem;
+  }
+  .section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .section-hint {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.1rem;
+    line-height: 1.5;
+  }
+
+  /* ========== RADIO OPTION ROWS ========== */
+  .radio-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .radio-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0.85rem 1.1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: border-color 0.18s, background 0.18s;
+    user-select: none;
+  }
+  .radio-row:hover {
+    border-color: rgba(255,255,255,0.1);
+    background: var(--bg-card-hover);
+  }
+  .radio-row.selected {
+    border-color: var(--border-accent);
+    background: var(--accent-dim);
+  }
+  .radio-indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.18s;
+    position: relative;
+  }
+  .radio-row.selected .radio-indicator {
+    border-color: var(--accent);
+  }
+  .radio-indicator::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.18s, transform 0.18s;
+    transform: scale(0.5);
+  }
+  .radio-row.selected .radio-indicator::after {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .radio-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .radio-row.selected .radio-label {
+    color: #fff;
+  }
+
+  /* ========== STYLED SELECT ========== */
+  .select-wrap {
+    position: relative;
+  }
+  .select-wrap::after {
+    content: '';
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--text-muted);
+    pointer-events: none;
+  }
+  .styled-select {
+    width: 100%;
+    padding: 0.85rem 2.5rem 0.85rem 1.1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: border-color 0.18s, box-shadow 0.18s;
+    outline: none;
+  }
+  .styled-select:hover {
+    border-color: rgba(255,255,255,0.1);
+  }
+  .styled-select:focus {
+    border-color: var(--border-accent);
+    box-shadow: 0 0 0 3px rgba(73, 234, 203, 0.08);
+  }
+  .styled-select option {
+    background: #0e1a2b;
+    color: var(--text);
+  }
+
+  /* ========== SAVE BUTTON ========== */
+  .save-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-top: 2.5rem;
+  }
+  .btn-save {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.85rem 2rem;
+    background: linear-gradient(135deg, #49eacb, #3bc4a8);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--bg);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 4px 24px rgba(73, 234, 203, 0.2);
+    letter-spacing: -0.01em;
+  }
+  .btn-save:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 32px rgba(73, 234, 203, 0.3);
+  }
+  .btn-save:active { transform: translateY(0); }
+  .btn-save:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 4px 16px rgba(73, 234, 203, 0.12);
+  }
+
+  /* Spinner inside button */
+  .btn-save .spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(6,11,20,0.25);
+    border-top-color: var(--bg);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  .btn-save.loading .spinner { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ========== SUCCESS BANNER ========== */
+  .success-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.65rem 1rem;
+    background: var(--green-dim);
+    border: 1px solid rgba(0, 230, 118, 0.18);
+    border-radius: var(--radius-sm);
+    color: var(--green);
+    font-size: 0.83rem;
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .success-banner.visible { opacity: 1; }
+  .success-banner svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width: 480px) {
+    .main { padding: 1rem; }
+    .header-btn span { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo-icon">C</div>
+    <div class="logo-text"><span class="cr">Crypto</span><span class="da">Dash</span></div>
+  </div>
+  <div class="header-right">
+    <a class="header-btn" href="02-dashboard.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <span>Dashboard</span>
+    </a>
+    <button class="header-btn" title="Log out">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ========== MAIN ========== -->
+<main class="main">
+
+  <!-- Page title -->
+  <div class="page-title-block">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Manage your preferences</p>
+  </div>
+
+  <!-- Setting 1: Auto-refresh interval -->
+  <div class="settings-section">
+    <div class="section-label">Auto-refresh Interval</div>
+    <p class="section-hint">How often CryptoDash automatically fetches updated balances and prices.</p>
+    <div class="radio-list" id="refresh-options">
+      <div class="radio-row" data-value="5m" onclick="selectRadio(this, 'refresh-options')">
+        <div class="radio-indicator"></div>
+        <span class="radio-label">5 minutes</span>
+      </div>
+      <div class="radio-row selected" data-value="15m" onclick="selectRadio(this, 'refresh-options')">
+        <div class="radio-indicator"></div>
+        <span class="radio-label">15 minutes</span>
+      </div>
+      <div class="radio-row" data-value="30m" onclick="selectRadio(this, 'refresh-options')">
+        <div class="radio-indicator"></div>
+        <span class="radio-label">30 minutes</span>
+      </div>
+      <div class="radio-row" data-value="1h" onclick="selectRadio(this, 'refresh-options')">
+        <div class="radio-indicator"></div>
+        <span class="radio-label">1 hour</span>
+      </div>
+      <div class="radio-row" data-value="off" onclick="selectRadio(this, 'refresh-options')">
+        <div class="radio-indicator"></div>
+        <span class="radio-label">Disabled</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Setting 2: Preferred timezone -->
+  <div class="settings-section">
+    <div class="section-label">Preferred Timezone</div>
+    <p class="section-hint">Timestamps throughout CryptoDash will be displayed in this timezone.</p>
+    <div class="select-wrap">
+      <select class="styled-select" id="timezone-select">
+        <option value="UTC" selected>UTC — GMT+0</option>
+        <option value="Europe/London">London — GMT+0/+1</option>
+        <option value="Europe/Paris">Paris / Berlin — GMT+1/+2</option>
+        <option value="Europe/Helsinki">Helsinki / Kyiv — GMT+2/+3</option>
+        <option value="Asia/Dubai">Dubai — GMT+4</option>
+        <option value="Asia/Karachi">Karachi — GMT+5</option>
+        <option value="Asia/Kolkata">Mumbai / Kolkata — GMT+5:30</option>
+        <option value="Asia/Bangkok">Bangkok — GMT+7</option>
+        <option value="Asia/Singapore">Singapore — GMT+8</option>
+        <option value="Asia/Shanghai">Shanghai / Beijing — GMT+8</option>
+        <option value="Asia/Tokyo">Tokyo — GMT+9</option>
+        <option value="Australia/Sydney">Sydney — GMT+10/+11</option>
+        <option value="Pacific/Auckland">Auckland — GMT+12/+13</option>
+        <option value="Pacific/Honolulu">Honolulu — GMT-10</option>
+        <option value="America/Anchorage">Anchorage — GMT-9</option>
+        <option value="America/Los_Angeles">Los Angeles — GMT-8/-7</option>
+        <option value="America/Denver">Denver — GMT-7/-6</option>
+        <option value="America/Chicago">Chicago — GMT-6/-5</option>
+        <option value="America/New_York">New York / Toronto — GMT-5/-4</option>
+        <option value="America/Sao_Paulo">São Paulo — GMT-3</option>
+        <option value="America/Argentina/Buenos_Aires">Buenos Aires — GMT-3</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Save button + success banner -->
+  <div class="save-row">
+    <div class="success-banner" id="success-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      Settings saved.
+    </div>
+    <button class="btn-save" id="save-btn" onclick="saveSettings()">
+      <span class="spinner"></span>
+      <span class="btn-label">Save Changes</span>
+    </button>
+  </div>
+
+</main>
+
+<script>
+  function selectRadio(row, groupId) {
+    const group = document.getElementById(groupId);
+    group.querySelectorAll('.radio-row').forEach(function(r) {
+      r.classList.remove('selected');
+    });
+    row.classList.add('selected');
+  }
+
+  function saveSettings() {
+    var btn = document.getElementById('save-btn');
+    var banner = document.getElementById('success-banner');
+
+    if (btn.disabled) return;
+
+    // Loading state
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.querySelector('.btn-label').textContent = 'Saving…';
+
+    // Hide any existing banner
+    banner.classList.remove('visible');
+
+    setTimeout(function() {
+      // Restore button
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      btn.querySelector('.btn-label').textContent = 'Save Changes';
+
+      // Show success banner
+      banner.classList.add('visible');
+
+      // Fade out after 2 seconds
+      setTimeout(function() {
+        banner.classList.remove('visible');
+      }, 2000);
+    }, 1500);
+  }
+</script>
+
+</body>
+</html>
