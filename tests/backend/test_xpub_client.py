@@ -355,9 +355,7 @@ async def test_get_xpub_transactions_all_paginates(client):
     tokens = [_token(addr, 0, transfers=2)]
 
     def make_tx(txid: str, t: int, h: int) -> dict:
-        return _tx(
-            txid=txid, block_time=t, block_height=h, vout=[_vout(addr, 1000)]
-        )
+        return _tx(txid=txid, block_time=t, block_height=h, vout=[_vout(addr, 1000)])
 
     page_responses = {
         1: _txs_page_response(
@@ -594,9 +592,7 @@ async def test_get_xpub_transactions_since_stops_paginating_after_cutoff(client)
         if page == 1:
             return httpx.Response(200, json=page1)
         page2_called = True
-        return httpx.Response(
-            500, json={"error": "should not have been called"}
-        )
+        return httpx.Response(500, json={"error": "should not have been called"})
 
     respx.get(url__regex=XPUB_URL_RE).mock(side_effect=handler)
 

@@ -12,7 +12,11 @@ import EditTagInput from "@/components/wallet/EditTagInput.vue";
 import RemoveWalletDialog from "@/components/wallet/RemoveWalletDialog.vue";
 import HdBadge from "@/components/wallet/HdBadge.vue";
 import DerivedAddressList from "@/components/wallet/DerivedAddressList.vue";
-import type { TransactionPage, TransactionResponse, WalletResponse } from "@/types/api";
+import type {
+  TransactionPage,
+  TransactionResponse,
+  WalletResponse,
+} from "@/types/api";
 import {
   formatUsd,
   formatBtc,
@@ -102,18 +106,26 @@ async function loadTransactions() {
 function goToPage(p: number) {
   currentPage.value = Math.max(1, Math.min(p, totalPages.value));
   txPageChanging.value = true;
-  void loadTransactions().finally(() => { txPageChanging.value = false; });
+  void loadTransactions().finally(() => {
+    txPageChanging.value = false;
+  });
 }
 
 function onPageSizeChange(size: number) {
   pageSize.value = size;
   currentPage.value = 1;
   txPageChanging.value = true;
-  void loadTransactions().finally(() => { txPageChanging.value = false; });
+  void loadTransactions().finally(() => {
+    txPageChanging.value = false;
+  });
 }
 
 function doJump() {
-  if (jumpTarget.value !== null && jumpTarget.value >= 1 && jumpTarget.value <= totalPages.value) {
+  if (
+    jumpTarget.value !== null &&
+    jumpTarget.value >= 1 &&
+    jumpTarget.value <= totalPages.value
+  ) {
     goToPage(jumpTarget.value);
     jumpTarget.value = null;
   }
@@ -134,7 +146,9 @@ async function copyAddress() {
   if (!wallet.value) return;
   await navigator.clipboard.writeText(wallet.value.address);
   copied.value = true;
-  setTimeout(() => { copied.value = false; }, 1500);
+  setTimeout(() => {
+    copied.value = false;
+  }, 1500);
 }
 
 function explorerUrl(txHash: string, network: string): string {
@@ -179,7 +193,11 @@ watch(
 watch(
   () => wallet.value?.history_status,
   (newStatus, oldStatus) => {
-    if (oldStatus !== undefined && newStatus === "complete" && oldStatus !== "complete") {
+    if (
+      oldStatus !== undefined &&
+      newStatus === "complete" &&
+      oldStatus !== "complete"
+    ) {
       currentPage.value = 1;
       void loadTransactions();
     }
@@ -265,7 +283,9 @@ function onWalletRemoved() {
               <span class="wallet-address" :title="wallet.address">{{
                 formatWalletAddress(wallet.address, wallet.wallet_type)
               }}</span>
-              <span class="copy-feedback" :class="{ visible: copied }">Copied!</span>
+              <span class="copy-feedback" :class="{ visible: copied }"
+                >Copied!</span
+              >
               <button
                 class="copy-btn"
                 title="Copy address"
@@ -292,7 +312,9 @@ function onWalletRemoved() {
             <div class="wallet-stats">
               <div class="stat-item">
                 <div class="stat-label">Balance</div>
-                <div class="stat-value">{{ formatNativeBalance(wallet) }}</div>
+                <div class="stat-value">
+                  {{ formatNativeBalance(wallet) }}
+                </div>
               </div>
               <div class="stat-item">
                 <div class="stat-label">Value (USD)</div>
@@ -393,56 +415,75 @@ function onWalletRemoved() {
             </span>
           </div>
 
-          <div v-if="txLoading && !txPageChanging" class="tx-empty">Loading transactions...</div>
-          <div v-else-if="txError" class="tx-empty tx-error">{{ txError }}</div>
+          <div v-if="txLoading && !txPageChanging" class="tx-empty">
+            Loading transactions...
+          </div>
+          <div v-else-if="txError" class="tx-empty tx-error">
+            {{ txError }}
+          </div>
           <div v-else-if="totalCount === 0" class="tx-empty">
             No transactions yet.
           </div>
           <template v-else>
             <div class="tx-table-wrap">
-            <table :class="['tx-table', { 'tx-table-loading': txPageChanging }]">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Transaction</th>
-                  <th>Type</th>
-                  <th class="text-right">Amount</th>
-                  <th class="text-right">Balance After</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="tx in transactions" :key="tx.id">
-                  <td class="tx-date">
-                    <span class="date-full">{{ formatTimestamp(tx.timestamp, settingsStore.preferredTimezone) }}</span>
-                    <span class="date-compact">{{ formatTimestampCompact(tx.timestamp, settingsStore.preferredTimezone) }}</span>
-                  </td>
-                  <td>
-                    <a
-                      class="tx-hash"
-                      :href="explorerUrl(tx.tx_hash, wallet.network)"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      >{{ truncateAddress(tx.tx_hash, 8, 8) }}</a
-                    >
-                  </td>
-                  <td>
-                    <span :class="['tx-type-badge', txType(tx.amount)]">
-                      {{ txType(tx.amount) === "in" ? "↑" : "↓" }}<span class="type-text">{{ txType(tx.amount) === "in" ? " IN" : " OUT" }}</span>
-                    </span>
-                  </td>
-                  <td :class="['tx-amount', txAmountClass(tx.amount)]">
-                    {{ formatAmount(tx.amount, wallet.network) }}
-                  </td>
-                  <td class="tx-balance">
-                    {{
-                      wallet.network === "BTC"
-                        ? formatBtc(tx.balance_after)
-                        : formatKas(tx.balance_after)
-                    }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+              <table
+                :class="['tx-table', { 'tx-table-loading': txPageChanging }]"
+              >
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Transaction</th>
+                    <th>Type</th>
+                    <th class="text-right">Amount</th>
+                    <th class="text-right">Balance After</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="tx in transactions" :key="tx.id">
+                    <td class="tx-date">
+                      <span class="date-full">{{
+                        formatTimestamp(
+                          tx.timestamp,
+                          settingsStore.preferredTimezone,
+                        )
+                      }}</span>
+                      <span class="date-compact">{{
+                        formatTimestampCompact(
+                          tx.timestamp,
+                          settingsStore.preferredTimezone,
+                        )
+                      }}</span>
+                    </td>
+                    <td>
+                      <a
+                        class="tx-hash"
+                        :href="explorerUrl(tx.tx_hash, wallet.network)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >{{ truncateAddress(tx.tx_hash, 8, 8) }}</a
+                      >
+                    </td>
+                    <td>
+                      <span :class="['tx-type-badge', txType(tx.amount)]">
+                        {{ txType(tx.amount) === "in" ? "↑" : "↓"
+                        }}<span class="type-text">{{
+                          txType(tx.amount) === "in" ? " IN" : " OUT"
+                        }}</span>
+                      </span>
+                    </td>
+                    <td :class="['tx-amount', txAmountClass(tx.amount)]">
+                      {{ formatAmount(tx.amount, wallet.network) }}
+                    </td>
+                    <td class="tx-balance">
+                      {{
+                        wallet.network === "BTC"
+                          ? formatBtc(tx.balance_after)
+                          : formatKas(tx.balance_after)
+                      }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
             <div class="tx-pagination">
               <span class="tx-page-info">{{ pageRangeText }}</span>
@@ -464,26 +505,36 @@ function onWalletRemoved() {
                     :disabled="currentPage === 1"
                     title="First page"
                     @click="goToPage(1)"
-                  >|◀</button>
+                  >
+                    |◀
+                  </button>
                   <button
                     class="nav-btn"
                     :disabled="currentPage === 1"
                     title="Previous page"
                     @click="goToPage(currentPage - 1)"
-                  >◀</button>
-                  <span class="page-display">{{ currentPage }} / {{ totalPages }}</span>
+                  >
+                    ◀
+                  </button>
+                  <span class="page-display"
+                    >{{ currentPage }} / {{ totalPages }}</span
+                  >
                   <button
                     class="nav-btn"
                     :disabled="currentPage === totalPages"
                     title="Next page"
                     @click="goToPage(currentPage + 1)"
-                  >▶</button>
+                  >
+                    ▶
+                  </button>
                   <button
                     class="nav-btn"
                     :disabled="currentPage === totalPages"
                     title="Last page"
                     @click="goToPage(totalPages)"
-                  >▶|</button>
+                  >
+                    ▶|
+                  </button>
                 </div>
                 <div class="page-jump">
                   <input

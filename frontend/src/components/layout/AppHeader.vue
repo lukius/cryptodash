@@ -20,14 +20,17 @@ async function onLogout() {
     <div class="header-left">
       <router-link to="/" class="header-logo">
         <img src="/favicon.svg" alt="" class="logo-mark" />
-        <span class="logo-title"><span class="logo-crypto">Crypto</span><span class="logo-dash">Dash</span></span>
+        <span class="logo-title"
+          ><span class="logo-crypto">Crypto</span
+          ><span class="logo-dash">Dash</span></span
+        >
       </router-link>
     </div>
     <div class="header-right">
       <button class="header-btn accent" @click="emit('refresh')">
         Refresh
       </button>
-      <router-link to="/settings" class="header-btn">Settings</router-link>
+      <router-link to="/settings" class="header-btn"> Settings </router-link>
       <button class="header-btn" @click="onLogout">Logout</button>
     </div>
   </header>

@@ -20,6 +20,7 @@ from backend.repositories.snapshot import (
     PriceSnapshotRepository,
 )
 from backend.repositories.wallet import WalletRepository
+
 logger = logging.getLogger(__name__)
 
 _MAX_CONCURRENT = 5
@@ -324,7 +325,11 @@ class RefreshService:
             snap_repo = BalanceSnapshotRepository(db)
             last_snap = await snap_repo.get_latest_for_wallet(wallet.id)
             if last_snap is not None:
-                logger.debug("HD wallet %s: tip unchanged (%d), using cached balance", wallet.tag, current_tip)
+                logger.debug(
+                    "HD wallet %s: tip unchanged (%d), using cached balance",
+                    wallet.tag,
+                    current_tip,
+                )
                 return Decimal(last_snap.balance)
 
         summary = await self.xpub_client.get_xpub_summary(wallet.address)

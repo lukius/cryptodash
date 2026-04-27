@@ -13,7 +13,8 @@ const settings = useSettingsStore();
 <template>
   <footer class="app-footer">
     <span class="last-updated">
-      Last updated: {{ formatTimestamp(props.lastUpdated, settings.preferredTimezone) }}
+      Last updated:
+      {{ formatTimestamp(props.lastUpdated, settings.preferredTimezone) }}
     </span>
     <span
       class="ws-indicator"

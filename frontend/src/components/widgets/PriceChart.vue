@@ -119,7 +119,11 @@ const baseOptions = {
         minUnit: "day" as const,
       },
       grid: { color: "rgba(255,255,255,0.04)" },
-      ticks: { color: "rgba(255,255,255,0.35)", maxRotation: 0, maxTicksLimit: 6 },
+      ticks: {
+        color: "rgba(255,255,255,0.35)",
+        maxRotation: 0,
+        maxTicksLimit: 6,
+      },
     },
     y: {
       grid: { color: "rgba(255,255,255,0.04)" },
@@ -145,9 +149,18 @@ const baseOptions = {
         />
       </div>
       <div class="chart-canvas-wrap" style="height: 180px">
-        <Line v-if="btcChartData" :key="selectedRange" :data="btcChartData" :options="baseOptions" />
+        <Line
+          v-if="btcChartData"
+          :key="selectedRange"
+          :data="btcChartData"
+          :options="baseOptions"
+        />
         <div v-else class="empty-chart">
-          {{ priceHistory === null ? "Loading, please wait..." : "Not enough data for this time range." }}
+          {{
+            priceHistory === null
+              ? "Loading, please wait..."
+              : "Not enough data for this time range."
+          }}
         </div>
       </div>
     </div>
@@ -158,9 +171,18 @@ const baseOptions = {
         <span class="chart-title">KAS / USD</span>
       </div>
       <div class="chart-canvas-wrap" style="height: 180px">
-        <Line v-if="kasChartData" :key="selectedRange" :data="kasChartData" :options="baseOptions" />
+        <Line
+          v-if="kasChartData"
+          :key="selectedRange"
+          :data="kasChartData"
+          :options="baseOptions"
+        />
         <div v-else class="empty-chart">
-          {{ priceHistory === null ? "Loading, please wait..." : "Not enough data for this time range." }}
+          {{
+            priceHistory === null
+              ? "Loading, please wait..."
+              : "Not enough data for this time range."
+          }}
         </div>
       </div>
     </div>

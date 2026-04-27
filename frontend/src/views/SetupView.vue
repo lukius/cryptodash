@@ -1,8 +1,8 @@
 <template>
   <div class="bg-effects">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
+    <div class="orb orb-1" />
+    <div class="orb orb-2" />
+    <div class="orb orb-3" />
   </div>
 
   <div class="page">
@@ -20,9 +20,11 @@
         a strong password.
       </p>
 
-      <div v-if="apiError" class="error-banner">{{ apiError }}</div>
+      <div v-if="apiError" class="error-banner">
+        {{ apiError }}
+      </div>
 
-      <form @submit.prevent="handleSubmit" novalidate>
+      <form novalidate @submit.prevent="handleSubmit">
         <div class="form-group" :class="{ error: errors.username }">
           <label for="setup-username">Username</label>
           <input
@@ -48,10 +50,10 @@
             @input="onPasswordInput"
           />
           <div class="pw-strength">
-            <div class="bar" :class="strengthBarClass(1)"></div>
-            <div class="bar" :class="strengthBarClass(2)"></div>
-            <div class="bar" :class="strengthBarClass(3)"></div>
-            <div class="bar" :class="strengthBarClass(4)"></div>
+            <div class="bar" :class="strengthBarClass(1)" />
+            <div class="bar" :class="strengthBarClass(2)" />
+            <div class="bar" :class="strengthBarClass(3)" />
+            <div class="bar" :class="strengthBarClass(4)" />
           </div>
           <div class="pw-strength-label" :style="{ color: strengthColor }">
             {{ strengthLabel }}

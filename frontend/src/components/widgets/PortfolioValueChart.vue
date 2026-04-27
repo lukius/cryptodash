@@ -98,7 +98,8 @@ const chartOptions = computed(() => ({
         weight: "bold" as const,
       },
       callbacks: {
-        label: (ctx: TooltipItem<"line">) => ` ${formatValue(ctx.parsed.y ?? 0)}`,
+        label: (ctx: TooltipItem<"line">) =>
+          ` ${formatValue(ctx.parsed.y ?? 0)}`,
       },
     },
   },
@@ -111,7 +112,11 @@ const chartOptions = computed(() => ({
         minUnit: "day" as const,
       },
       grid: { color: "rgba(255,255,255,0.04)" },
-      ticks: { color: "rgba(255,255,255,0.35)", maxRotation: 0, maxTicksLimit: 6 },
+      ticks: {
+        color: "rgba(255,255,255,0.35)",
+        maxRotation: 0,
+        maxTicksLimit: 6,
+      },
     },
     y: {
       grid: { color: "rgba(255,255,255,0.04)" },
@@ -164,7 +169,11 @@ const chartOptions = computed(() => ({
         :options="chartOptions"
       />
       <div v-else class="empty-chart">
-        {{ portfolioHistory === null ? "Loading, please wait..." : "Not enough data for this time range." }}
+        {{
+          portfolioHistory === null
+            ? "Loading, please wait..."
+            : "Not enough data for this time range."
+        }}
       </div>
     </div>
   </div>

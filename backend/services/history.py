@@ -16,6 +16,7 @@ from backend.repositories.snapshot import (
     PriceSnapshotRepository,
 )
 from backend.repositories.transaction import TransactionRepository
+
 logger = logging.getLogger(__name__)
 
 SATOSHI = Decimal("100000000")
@@ -387,7 +388,11 @@ class HistoryService:
         stored_tip = await config_repo.get_int(sync_tip_key)
 
         if stored_tip is not None and stored_tip == current_tip:
-            logger.debug("HD wallet %s: tip unchanged (%d), skipping sync", wallet.tag, current_tip)
+            logger.debug(
+                "HD wallet %s: tip unchanged (%d), skipping sync",
+                wallet.tag,
+                current_tip,
+            )
             return 0
 
         tx_repo = TransactionRepository(db)

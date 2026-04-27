@@ -206,7 +206,9 @@ async def list_transactions(
         )
     tx_repo = TransactionRepository(db)
     offset = (page - 1) * page_size
-    transactions, total = await tx_repo.list_by_wallet_paginated(wallet_id, page_size, offset)
+    transactions, total = await tx_repo.list_by_wallet_paginated(
+        wallet_id, page_size, offset
+    )
     total_pages = max(1, math.ceil(total / page_size))
     return TransactionPage(
         transactions=[

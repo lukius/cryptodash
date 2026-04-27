@@ -80,8 +80,8 @@ function onKeydown(event: KeyboardEvent) {
         type="button"
         class="edit-btn"
         title="Edit tag"
-        @click.stop="startEditing"
         aria-label="Edit tag"
+        @click.stop="startEditing"
       >
         <svg
           width="13"
@@ -116,8 +116,8 @@ function onKeydown(event: KeyboardEvent) {
         type="button"
         class="confirm-btn"
         title="Confirm"
-        @mousedown.prevent="confirm"
         aria-label="Confirm tag"
+        @mousedown.prevent="confirm"
       >
         <svg
           width="13"
@@ -137,8 +137,8 @@ function onKeydown(event: KeyboardEvent) {
         type="button"
         class="cancel-btn"
         title="Cancel"
-        @mousedown.prevent="cancel"
         aria-label="Cancel edit"
+        @mousedown.prevent="cancel"
       >
         <svg
           width="13"

@@ -1,8 +1,8 @@
 <template>
   <div class="bg-effects">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
+    <div class="orb orb-1" />
+    <div class="orb orb-2" />
+    <div class="orb orb-3" />
   </div>
 
   <div class="page">
@@ -17,14 +17,16 @@
       <h2>Welcome back</h2>
       <p class="subtitle">Enter your credentials to access your dashboard.</p>
 
-      <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
+      <div v-if="errorMessage" class="error-banner">
+        {{ errorMessage }}
+      </div>
       <div v-if="rateLimitMessage" class="rate-limit-banner">
         Too many failed attempts. Please wait
         <strong>{{ countdown }} second{{ countdown !== 1 ? "s" : "" }}</strong>
         before trying again.
       </div>
 
-      <form @submit.prevent="handleSubmit" novalidate>
+      <form novalidate @submit.prevent="handleSubmit">
         <div class="form-group">
           <label for="login-username">Username</label>
           <input

@@ -571,9 +571,7 @@ async def test_wallet_refreshed_fires_before_refresh_completed(
     await service.run_full_refresh()
 
     events = [call.args[0] for call in ws_manager.broadcast.call_args_list]
-    last_refreshed = max(
-        i for i, ev in enumerate(events) if ev == "wallet:refreshed"
-    )
+    last_refreshed = max(i for i, ev in enumerate(events) if ev == "wallet:refreshed")
     completed_idx = events.index("refresh:completed")
     assert last_refreshed < completed_idx
 
@@ -661,19 +659,27 @@ async def test_failed_wallet_does_not_block_others_commit(
 
     async with session_factory() as s:
         kas_snaps = (
-            await s.execute(
-                select(BalanceSnapshot).where(
-                    BalanceSnapshot.wallet_id == kas_wallet.id
+            (
+                await s.execute(
+                    select(BalanceSnapshot).where(
+                        BalanceSnapshot.wallet_id == kas_wallet.id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         btc_snaps = (
-            await s.execute(
-                select(BalanceSnapshot).where(
-                    BalanceSnapshot.wallet_id == btc_wallet.id
+            (
+                await s.execute(
+                    select(BalanceSnapshot).where(
+                        BalanceSnapshot.wallet_id == btc_wallet.id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     assert len(kas_snaps) == 1
     assert Decimal(kas_snaps[0].balance) == Decimal("1000")

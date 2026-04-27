@@ -97,7 +97,7 @@ SQLite (WAL mode, aiosqlite)
 
 External API clients (backend/clients/) ← Mempool.space, Blockbook, Kaspa, CoinGecko
 Background scheduler (backend/core/scheduler.py)
-WebSocket manager   (backend/core/ws_manager.py)
+WebSocket manager   (backend/core/websocket_manager.py)
 ```
 
 Rules:

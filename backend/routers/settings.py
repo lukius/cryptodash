@@ -74,8 +74,12 @@ async def update_settings(
         else:
             resp_interval = int(raw)
 
-    resp_tz = body.preferred_timezone if "preferred_timezone" in body.model_fields_set else (
-        await config_repo.get(_TZ_KEY) or _DEFAULT_TIMEZONE
+    resp_tz = (
+        body.preferred_timezone
+        if "preferred_timezone" in body.model_fields_set
+        else (await config_repo.get(_TZ_KEY) or _DEFAULT_TIMEZONE)
     )
 
-    return SettingsResponse(refresh_interval_minutes=resp_interval, preferred_timezone=resp_tz)
+    return SettingsResponse(
+        refresh_interval_minutes=resp_interval, preferred_timezone=resp_tz
+    )

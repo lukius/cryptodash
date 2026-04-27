@@ -73,7 +73,8 @@ export function formatTimestampCompact(
       timeZone,
     });
     const parts = fmt.formatToParts(d);
-    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+    const get = (type: string) =>
+      parts.find((p) => p.type === type)?.value ?? "00";
     return `${get("month")}/${get("day")} ${get("hour")}:${get("minute")}`;
   } catch {
     return "N/A";

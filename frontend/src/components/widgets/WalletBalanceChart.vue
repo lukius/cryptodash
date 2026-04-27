@@ -39,7 +39,7 @@ const props = withDefaults(
     network?: string;
     showUnitToggle?: boolean;
   }>(),
-  { showUnitToggle: false },
+  { showUnitToggle: false, network: undefined },
 );
 
 const emit = defineEmits<{
@@ -138,7 +138,11 @@ const chartOptions = computed(() => ({
         minUnit: "day" as const,
       },
       grid: { color: "rgba(255,255,255,0.04)" },
-      ticks: { color: "rgba(255,255,255,0.35)", maxRotation: 0, maxTicksLimit: 6 },
+      ticks: {
+        color: "rgba(255,255,255,0.35)",
+        maxRotation: 0,
+        maxTicksLimit: 6,
+      },
     },
     y: {
       grid: { color: "rgba(255,255,255,0.04)" },
@@ -175,7 +179,12 @@ const chartOptions = computed(() => ({
       </div>
     </div>
     <div class="chart-canvas-wrap" style="height: 240px">
-      <Line v-if="chartData" :key="selectedRange" :data="chartData" :options="chartOptions" />
+      <Line
+        v-if="chartData"
+        :key="selectedRange"
+        :data="chartData"
+        :options="chartOptions"
+      />
       <div v-else class="empty-chart">
         {{ isLoading ? "Loading..." : "Not enough data for this time range." }}
       </div>

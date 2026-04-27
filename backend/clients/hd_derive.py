@@ -237,8 +237,11 @@ def _bech32_encode(hrp: str, witver: int, witprog: bytes) -> str:
     data = [witver] + _convertbits(witprog, 8, 5)
     combined = data + [0, 0, 0, 0, 0, 0]
     checksum = _bech32_polymod(_bech32_hrp_expand(hrp) + combined) ^ 1
-    return hrp + "1" + "".join([_BECH32_CHARSET[d] for d in data]) + "".join(
-        [_BECH32_CHARSET[(checksum >> (5 * (5 - i))) & 31] for i in range(6)]
+    return (
+        hrp
+        + "1"
+        + "".join([_BECH32_CHARSET[d] for d in data])
+        + "".join([_BECH32_CHARSET[(checksum >> (5 * (5 - i))) & 31] for i in range(6)])
     )
 
 

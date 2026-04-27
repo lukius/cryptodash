@@ -854,9 +854,9 @@ async def test_hd_wallet_remove_cascades(wallet_client, auth_headers, fresh_engi
             cfg_result = await db.execute(
                 select(Configuration).where(Configuration.key == key)
             )
-            assert cfg_result.scalar_one_or_none() is None, (
-                f"orphan config row left behind: {key}"
-            )
+            assert (
+                cfg_result.scalar_one_or_none() is None
+            ), f"orphan config row left behind: {key}"
 
 
 @pytest.mark.asyncio
@@ -940,6 +940,7 @@ async def test_idor_remove_wallet_other_user_returns_not_found(fresh_engine):
 def _make_tx(wallet_id: str, tx_hash: str, minutes_offset: int = 0) -> Transaction:
     now = datetime.now(timezone.utc)
     from datetime import timedelta
+
     return Transaction(
         id=str(uuid.uuid4()),
         wallet_id=wallet_id,
@@ -963,7 +964,11 @@ async def test_list_transactions_returns_404_for_unknown_wallet(wallet_client_wi
     client, session_factory = wallet_client_with_db
     resp = await client.post(
         "/api/auth/setup",
-        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
     )
     token = resp.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -977,7 +982,11 @@ async def test_list_transactions_paginated_response_shape(wallet_client_with_db)
     client, session_factory = wallet_client_with_db
     resp = await client.post(
         "/api/auth/setup",
-        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
     )
     token = resp.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -1009,7 +1018,11 @@ async def test_list_transactions_paginated_second_page(wallet_client_with_db):
     client, session_factory = wallet_client_with_db
     resp = await client.post(
         "/api/auth/setup",
-        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
     )
     token = resp.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -1038,7 +1051,11 @@ async def test_list_transactions_ordered_newest_first(wallet_client_with_db):
     client, session_factory = wallet_client_with_db
     resp = await client.post(
         "/api/auth/setup",
-        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
     )
     token = resp.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -1065,7 +1082,11 @@ async def test_list_transactions_timestamps_are_utc(wallet_client_with_db):
     client, session_factory = wallet_client_with_db
     resp = await client.post(
         "/api/auth/setup",
-        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
     )
     token = resp.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -1083,7 +1104,9 @@ async def test_list_transactions_timestamps_are_utc(wallet_client_with_db):
     )
     assert resp.status_code == 200
     tx = resp.json()["transactions"][0]
-    assert tx["timestamp"].endswith("Z"), "timestamp must be a UTC ISO string (ends with 'Z')"
+    assert tx["timestamp"].endswith(
+        "Z"
+    ), "timestamp must be a UTC ISO string (ends with 'Z')"
 
 
 @pytest.mark.asyncio
@@ -1091,7 +1114,11 @@ async def test_list_transactions_empty_wallet(wallet_client_with_db):
     client, session_factory = wallet_client_with_db
     resp = await client.post(
         "/api/auth/setup",
-        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
     )
     token = resp.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -1115,7 +1142,11 @@ async def test_list_transactions_invalid_page_size_rejected(wallet_client_with_d
     client, session_factory = wallet_client_with_db
     resp = await client.post(
         "/api/auth/setup",
-        json={"username": "alice", "password": "password1", "password_confirm": "password1"},
+        json={
+            "username": "alice",
+            "password": "password1",
+            "password_confirm": "password1",
+        },
     )
     token = resp.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}

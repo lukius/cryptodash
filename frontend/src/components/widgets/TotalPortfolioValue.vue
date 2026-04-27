@@ -23,7 +23,7 @@ const isPositive = computed(() => (change24hUsd.value ?? 0) >= 0);
 <template>
   <div class="card portfolio-value">
     <div class="card-label">
-      <div class="dot" style="background: var(--accent)"></div>
+      <div class="dot" style="background: var(--accent)" />
       Total Portfolio Value
     </div>
     <div class="value">

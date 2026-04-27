@@ -1,6 +1,6 @@
 <template>
   <div class="loading-spinner" role="status" aria-label="Loading">
-    <div class="spinner"></div>
+    <div class="spinner" />
   </div>
 </template>
 

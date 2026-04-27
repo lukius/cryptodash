@@ -100,14 +100,16 @@ const chartOptions = computed(() => ({
           <span
             class="swatch"
             :style="{ background: NETWORK_COLORS[seg.network] ?? '#888' }"
-          ></span>
+          />
           <span class="name">{{
             seg.network === "BTC" ? "Bitcoin" : "Kaspa"
           }}</span>
         </div>
         <div class="right">
           <div class="pct">{{ parseFloat(seg.percentage).toFixed(1) }}%</div>
-          <div class="usd">{{ formatUsd(seg.value_usd) }}</div>
+          <div class="usd">
+            {{ formatUsd(seg.value_usd) }}
+          </div>
         </div>
       </div>
     </div>

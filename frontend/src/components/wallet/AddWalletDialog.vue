@@ -205,8 +205,8 @@ async function submit() {
         <label for="wallet-address">{{ addressLabel }}</label>
         <textarea
           id="wallet-address"
-          data-testid="address-input"
           v-model="address"
+          data-testid="address-input"
           :placeholder="addressPlaceholder"
           rows="2"
           :class="{ 'input-error': addressError }"
@@ -214,7 +214,9 @@ async function submit() {
           @paste="onAddressPaste"
           @blur="onAddressBlur"
         />
-        <div v-if="addressError" class="error-text">{{ addressError }}</div>
+        <div v-if="addressError" class="error-text">
+          {{ addressError }}
+        </div>
         <div v-else class="hint">
           Paste the public address you want to track
         </div>
@@ -238,7 +240,9 @@ async function submit() {
         />
       </div>
 
-      <div v-if="apiError" class="api-error">{{ apiError }}</div>
+      <div v-if="apiError" class="api-error">
+        {{ apiError }}
+      </div>
 
       <div class="btn-row">
         <button type="button" class="btn-cancel" @click="close">Cancel</button>

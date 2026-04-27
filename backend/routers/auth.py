@@ -57,7 +57,9 @@ async def setup_account(
             detail="An account already exists.",
         )
     await db.commit()
-    return LoginResponse(token=session.token, expires_at=utc_isoformat(session.expires_at))
+    return LoginResponse(
+        token=session.token, expires_at=utc_isoformat(session.expires_at)
+    )
 
 
 @router.post("/login")
@@ -82,7 +84,9 @@ async def login(
             detail="Invalid username or password.",
         )
     await db.commit()
-    return LoginResponse(token=session.token, expires_at=utc_isoformat(session.expires_at))
+    return LoginResponse(
+        token=session.token, expires_at=utc_isoformat(session.expires_at)
+    )
 
 
 @router.post("/logout")

@@ -70,7 +70,9 @@ async function confirm() {
         All historical data for this HD wallet will be deleted.
       </p>
       <p v-else>All historical data for this wallet will be deleted.</p>
-      <div v-if="error" class="error-text">{{ error }}</div>
+      <div v-if="error" class="error-text">
+        {{ error }}
+      </div>
       <div class="btn-row">
         <button type="button" class="btn-cancel" @click="close">Cancel</button>
         <button

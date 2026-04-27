@@ -138,7 +138,7 @@ function navigateToWallet(wallet: WalletResponse) {
               Value (USD)
               <span class="sort-arrow">{{ sortArrow("balance_usd") }}</span>
             </th>
-            <th style="text-align: right"></th>
+            <th style="text-align: right" />
           </tr>
         </thead>
         <tbody>
@@ -168,8 +168,12 @@ function navigateToWallet(wallet: WalletResponse) {
               <td class="address" :title="wallet.address">
                 {{ formatWalletAddress(wallet.address, wallet.wallet_type) }}
               </td>
-              <td class="balance">{{ formatBalance(wallet) }}</td>
-              <td class="usd-val">{{ formatUsd(wallet.balance_usd) }}</td>
+              <td class="balance">
+                {{ formatBalance(wallet) }}
+              </td>
+              <td class="usd-val">
+                {{ formatUsd(wallet.balance_usd) }}
+              </td>
               <td class="actions">
                 <button
                   v-if="wallet.wallet_type === 'hd'"

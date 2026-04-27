@@ -112,7 +112,7 @@ cryptodash/
 │   ├── types/              # TypeScript interfaces
 │   ├── utils/              # Formatting and address validation helpers
 │   └── views/              # Page-level components
-├── migrations/             # Alembic database migrations
+├── backend/migrations/     # Alembic database migrations
 ├── specs/                  # Functional spec, tech spec, UI mockups (source of truth)
 ├── tests/                  # pytest (backend) + Vitest (frontend) test suites
 └── .claude/                # Claude Code agent team and custom skills

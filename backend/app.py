@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CryptoDash", lifespan=lifespan)
+    app = FastAPI(title="CryptoDash", version="1.0.0", lifespan=lifespan)
 
     # CORS — allow Vite dev server
     app.add_middleware(

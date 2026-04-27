@@ -135,9 +135,12 @@ async function save() {
           </div>
 
           <div class="field-group">
-            <label class="field-label" for="tz-select">Preferred timezone</label>
+            <label class="field-label" for="tz-select"
+              >Preferred timezone</label
+            >
             <p class="field-hint">
-              Timestamps throughout CryptoDash will be displayed in this timezone.
+              Timestamps throughout CryptoDash will be displayed in this
+              timezone.
             </p>
             <select id="tz-select" v-model="selectedTimezone" class="tz-select">
               <option
