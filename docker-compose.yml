@@ -1,0 +1,15 @@
+services:
+  cryptodash:
+    image: ghcr.io/lukius/cryptodash:latest
+    container_name: cryptodash
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - cryptodash-data:/app/data
+    # Optional: override defaults
+    # environment:
+    #   CRYPTODASH_LOG_LEVEL: info
+
+volumes:
+  cryptodash-data:

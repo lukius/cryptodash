@@ -46,3 +46,18 @@ jobs:
         run: npm run test
       - name: Build
         run: npm run build
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: cryptodash:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

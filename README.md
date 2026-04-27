@@ -29,7 +29,30 @@ A self-hosted personal cryptocurrency portfolio dashboard. Track wallet balances
 
 External data sources: [Mempool.space](https://mempool.space) (Bitcoin individual addresses), [Trezor Blockbook](https://trezor.io) (HD wallets / xpub), [api.kaspa.org](https://api.kaspa.org) (Kaspa), [CoinGecko](https://www.coingecko.com) (prices).
 
-## Quick Start
+## Quick Start (Docker)
+
+The fastest way to run CryptoDash. Requires Docker.
+
+```bash
+docker run -d \
+  --name cryptodash \
+  -p 8000:8000 \
+  -v cryptodash-data:/app/data \
+  ghcr.io/lukius/cryptodash:latest
+```
+
+Or with Docker Compose:
+
+```bash
+curl -O https://raw.githubusercontent.com/lukius/cryptodash/master/docker-compose.yml
+docker compose up -d
+```
+
+Open [http://localhost:8000](http://localhost:8000) in your browser. On first run you will be prompted to create a username and password. Your data lives in the `cryptodash-data` named volume — your wallet list and history persist across container restarts and image upgrades.
+
+Images are published for `linux/amd64` and `linux/arm64` (e.g. Raspberry Pi 4/5).
+
+## Quick Start (from source)
 
 **Prerequisites:** Python 3.11+, Node.js 18+
 
@@ -84,10 +107,20 @@ All settings are optional environment variables with sensible defaults:
 
 The refresh interval is configured inside the app via the Settings page and persisted in the database.
 
+When running under Docker, pass these via `-e VAR=value` (or in the `environment:` block of `docker-compose.yml`). The default `CRYPTODASH_DB_PATH` inside the container is `/app/data/cryptodash.db` so the database lives in the mounted volume.
+
 ### Reset password
+
+From source:
 
 ```bash
 python run.py reset-password
+```
+
+In Docker:
+
+```bash
+docker exec -it cryptodash python run.py reset-password
 ```
 
 ## Project Structure
