@@ -9,6 +9,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from backend.clients.bitcoin import BitcoinClient
 from backend.clients.coingecko import CoinGeckoClient
@@ -36,6 +38,20 @@ from backend.services.history import HistoryService
 from backend.services.refresh import RefreshService
 
 logger = logging.getLogger(__name__)
+
+
+class SPAStaticFiles(StaticFiles):
+    """StaticFiles that falls back to index.html for unknown non-API paths so
+    deep-link refreshes (e.g. /wallet/<id>) load the SPA instead of returning a
+    JSON 404."""
+
+    async def get_response(self, path: str, scope: Scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and not path.startswith("api/"):
+                return await super().get_response("index.html", scope)
+            raise
 
 
 @asynccontextmanager
@@ -167,7 +183,9 @@ def create_app() -> FastAPI:
     # Static files — only if frontend/dist exists
     frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
     if os.path.isdir(frontend_dist):
-        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
+        app.mount(
+            "/", SPAStaticFiles(directory=frontend_dist, html=True), name="static"
+        )
     else:
         logger.warning(
             "frontend/dist not found — static file serving disabled. "

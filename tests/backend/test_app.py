@@ -302,3 +302,28 @@ def test_app_creates_without_frontend_dist(monkeypatch):
 
     app = create_app()
     assert isinstance(app, FastAPI)
+
+
+# ---------------------------------------------------------------------------
+# ST5: SPA fallback for client-side routes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_spa_fallback_serves_index_for_client_routes(app_client):
+    """Refreshing on a frontend route (e.g. /wallet/<id>) must return the SPA
+    index.html so the router can take over, not a JSON 404."""
+    response = await app_client.get("/wallet/abc-123")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "<div id=\"app\">" in response.text or "id=app" in response.text
+
+
+@pytest.mark.asyncio
+async def test_spa_fallback_does_not_swallow_unknown_api_routes(app_client):
+    """Unknown /api/* paths must still return a JSON 404 — not the SPA
+    index.html — so client API errors stay machine-readable."""
+    response = await app_client.get("/api/this-endpoint-does-not-exist")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"detail": "Not Found"}
