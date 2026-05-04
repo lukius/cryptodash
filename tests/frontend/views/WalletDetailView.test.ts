@@ -410,6 +410,11 @@ describe("WalletDetailView — copy address feedback", () => {
       writable: true,
       configurable: true,
     });
+    Object.defineProperty(window, "isSecureContext", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
   });
 
   afterEach(() => {
@@ -455,5 +460,60 @@ describe("WalletDetailView — copy address feedback", () => {
     await flushPromises();
 
     expect(wrapper.find(".copy-feedback").classes()).not.toContain("visible");
+  });
+
+  it("falls back to execCommand and still shows 'Copied!' in non-secure contexts (e.g. Android Chrome over HTTP)", async () => {
+    // Simulate Android Chrome on plain HTTP: navigator.clipboard is undefined.
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(window, "isSecureContext", {
+      value: false,
+      writable: true,
+      configurable: true,
+    });
+    const execCommandMock = vi.fn().mockReturnValue(true);
+    document.execCommand = execCommandMock;
+
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+    const store = useWalletsStore();
+    store.wallets = [makeIndividualWallet()];
+
+    const wrapper = mount(WalletDetailView);
+    await flushPromises();
+
+    await wrapper.find(".copy-btn").trigger("click");
+    await flushPromises();
+
+    expect(execCommandMock).toHaveBeenCalledWith("copy");
+    expect(wrapper.find(".copy-feedback").classes()).toContain("visible");
+  });
+
+  it("falls back to execCommand when navigator.clipboard.writeText rejects", async () => {
+    writeTextMock.mockRejectedValueOnce(new Error("Permission denied"));
+    Object.defineProperty(window, "isSecureContext", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+    const execCommandMock = vi.fn().mockReturnValue(true);
+    document.execCommand = execCommandMock;
+
+    const api = makeApi();
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+    const store = useWalletsStore();
+    store.wallets = [makeIndividualWallet()];
+
+    const wrapper = mount(WalletDetailView);
+    await flushPromises();
+
+    await wrapper.find(".copy-btn").trigger("click");
+    await flushPromises();
+
+    expect(execCommandMock).toHaveBeenCalledWith("copy");
+    expect(wrapper.find(".copy-feedback").classes()).toContain("visible");
   });
 });

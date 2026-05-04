@@ -17,7 +17,8 @@
 
     <!-- Address table -->
     <template v-else>
-      <table class="derived-table">
+      <div class="derived-table-wrap">
+        <table class="derived-table">
         <thead class="derived-thead">
           <tr>
             <th class="derived-th derived-th-left">Address</th>
@@ -41,6 +42,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
       <!-- "Showing top N of M" note (FR-H15) -->
       <div
         v-if="
@@ -80,6 +82,10 @@ function formatAddress(addr: string): string {
   overflow: hidden;
 }
 
+.derived-table-wrap {
+  overflow-x: auto;
+}
+
 .derived-loading {
   display: flex;
   justify-content: center;
@@ -115,6 +121,7 @@ function formatAddress(addr: string): string {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: rgba(255, 255, 255, 0.38);
+  white-space: nowrap;
 }
 
 .derived-th-left {
@@ -139,6 +146,7 @@ function formatAddress(addr: string): string {
 
 .derived-td {
   padding: 0.5rem 1rem;
+  white-space: nowrap;
 }
 
 .derived-td-addr {

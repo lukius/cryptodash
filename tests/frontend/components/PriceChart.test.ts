@@ -79,4 +79,5 @@ describe("PriceChart", () => {
     expect(emptyMessages[0].text()).toContain("Not enough data for this time range.");
     expect(wrapper.findAll("canvas")).toHaveLength(1);
   });
+
 });
