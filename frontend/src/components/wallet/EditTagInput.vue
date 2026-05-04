@@ -75,31 +75,35 @@ function onKeydown(event: KeyboardEvent) {
 <template>
   <span class="edit-tag-input">
     <template v-if="!editing">
-      <span class="tag-text">{{ tag }}</span>
-      <button
-        type="button"
-        class="edit-btn"
-        title="Edit tag"
-        aria-label="Edit tag"
-        @click.stop="startEditing"
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
+      <span class="tag-display">
+        <span class="tag-text">{{ tag }}</span>
+        <button
+          type="button"
+          class="edit-btn"
+          title="Edit tag"
+          aria-label="Edit tag"
+          @click.stop="startEditing"
         >
-          <path
-            d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
-          />
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-        </svg>
-      </button>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path
+              d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+            />
+            <path
+              d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+            />
+          </svg>
+        </button>
+      </span>
     </template>
     <template v-else>
       <input
@@ -166,6 +170,13 @@ function onKeydown(event: KeyboardEvent) {
   align-items: center;
   gap: 0.35rem;
   flex-wrap: wrap;
+}
+
+.tag-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
 }
 
 .tag-text {

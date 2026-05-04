@@ -218,6 +218,11 @@ onUnmounted(() => {
   margin-bottom: 1rem;
 }
 
+.summary-row > *,
+.charts-row > * {
+  min-width: 0;
+}
+
 .charts-row {
   display: grid;
   grid-template-columns: 2fr 1fr;
