@@ -296,18 +296,19 @@ describe("AddWalletDialog", () => {
 
   // ---- HD wallet detection ----
 
-  it("shows Trezor helper text when network is BTC", () => {
+  it("shows xpub helper text when network is BTC", () => {
     const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
-    expect(wrapper.text()).toContain("Find your extended public key in Trezor Suite");
+    expect(wrapper.text()).toContain("extended public key");
+    expect(wrapper.text()).toContain("xpub");
   });
 
-  it("does not show Trezor helper text when network is KAS", async () => {
+  it("does not show xpub helper text when network is KAS", async () => {
     const wrapper = mount(AddWalletDialog, { props: { modelValue: true } });
     const kasBtn = wrapper.findAll("button").find((b) =>
       b.text().toLowerCase().includes("kaspa"),
     );
     await kasBtn!.trigger("click");
-    expect(wrapper.text()).not.toContain("Find your extended public key in Trezor Suite");
+    expect(wrapper.text()).not.toContain("extended public key");
   });
 
   it("BTC address input has combined placeholder text when BTC is selected", () => {

@@ -220,9 +220,9 @@ async function submit() {
         <div v-else class="hint">
           Paste the public address you want to track
         </div>
-        <div v-if="network === 'BTC'" class="hint trezor-hint">
-          Find your extended public key in Trezor Suite under Account &rarr;
-          Details &rarr; Show public key.
+        <div v-if="network === 'BTC'" class="hint xpub-hint">
+          Track an entire HD wallet by pasting its extended public key
+          (xpub/ypub/zpub) — usually found in your wallet app's account details.
         </div>
       </div>
 
@@ -372,7 +372,7 @@ textarea:focus {
   margin-top: 0.3rem;
 }
 
-.trezor-hint {
+.xpub-hint {
   margin-top: 0.5rem;
 }
 
