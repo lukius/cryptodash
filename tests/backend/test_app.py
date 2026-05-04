@@ -310,19 +310,56 @@ def test_app_creates_without_frontend_dist(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_spa_fallback_serves_index_for_client_routes(app_client):
+async def test_spa_fallback_serves_index_for_client_routes(tmp_path):
     """Refreshing on a frontend route (e.g. /wallet/<id>) must return the SPA
-    index.html so the router can take over, not a JSON 404."""
-    response = await app_client.get("/wallet/abc-123")
+    index.html so the router can take over, not a JSON 404.
+
+    This tests SPAStaticFiles directly against a tmp-path "dist" so it works in
+    CI environments where the real frontend has not been built.
+    """
+    from fastapi import FastAPI
+    from backend.app import SPAStaticFiles
+
+    sentinel_html = '<!doctype html><html><body><div id="app"></div></body></html>'
+    (tmp_path / "index.html").write_text(sentinel_html)
+
+    app = FastAPI()
+    app.mount("/", SPAStaticFiles(directory=str(tmp_path), html=True), name="static")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/wallet/abc-123")
+
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert '<div id="app">' in response.text or "id=app" in response.text
+    assert response.text == sentinel_html
 
 
 @pytest.mark.asyncio
-async def test_spa_fallback_does_not_swallow_unknown_api_routes(app_client):
-    """Unknown /api/* paths must still return a JSON 404 — not the SPA
-    index.html — so client API errors stay machine-readable."""
+async def test_spa_fallback_passes_through_api_404(tmp_path):
+    """SPAStaticFiles must not serve index.html for `api/*` paths — otherwise
+    unknown API routes would return HTML instead of JSON 404."""
+    from fastapi import FastAPI
+    from backend.app import SPAStaticFiles
+
+    (tmp_path / "index.html").write_text("<html></html>")
+
+    app = FastAPI()
+    app.mount("/", SPAStaticFiles(directory=str(tmp_path), html=True), name="static")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/unknown-endpoint")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unknown_api_routes_return_json_404(app_client):
+    """Unknown /api/* paths on the real app must return a JSON 404 — not the
+    SPA index.html — so client API errors stay machine-readable."""
     response = await app_client.get("/api/this-endpoint-does-not-exist")
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/json")
