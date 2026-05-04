@@ -142,9 +142,42 @@ async function retryHistoryImport() {
 
 const copied = ref(false);
 
+async function writeToClipboard(text: string): Promise<boolean> {
+  // navigator.clipboard requires a secure context (HTTPS or localhost). On
+  // Android Chrome over plain HTTP — common when self-hosting on a LAN — it is
+  // undefined, so fall back to the legacy textarea + execCommand approach.
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // fall through to the legacy fallback
+    }
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "0";
+  ta.style.left = "0";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(ta);
+  return ok;
+}
+
 async function copyAddress() {
   if (!wallet.value) return;
-  await navigator.clipboard.writeText(wallet.value.address);
+  const ok = await writeToClipboard(wallet.value.address);
+  if (!ok) return;
   copied.value = true;
   setTimeout(() => {
     copied.value = false;
