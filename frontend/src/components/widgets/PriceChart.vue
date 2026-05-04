@@ -11,12 +11,11 @@ import {
   Tooltip,
   Legend,
   Filler,
-  type TooltipItem,
 } from "chart.js";
 import "chartjs-adapter-date-fns";
 import type { PriceHistoryResponse } from "@/types/api";
 import TimeRangeSelector from "@/components/common/TimeRangeSelector.vue";
-import { formatUsd } from "@/utils/format";
+import { makePriceChartOptions } from "@/components/widgets/priceChartOptions";
 
 ChartJS.register(
   LinearScale,
@@ -87,54 +86,8 @@ const kasChartData = computed(() => {
   };
 });
 
-const baseOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  interaction: { mode: "index" as const, intersect: false },
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      backgroundColor: "rgba(12, 18, 32, 0.95)",
-      borderColor: "rgba(255,255,255,0.08)",
-      borderWidth: 1,
-      padding: 10,
-      cornerRadius: 10,
-      titleFont: { family: "'JetBrains Mono', monospace", size: 11 as const },
-      bodyFont: {
-        family: "'JetBrains Mono', monospace",
-        size: 12 as const,
-        weight: "bold" as const,
-      },
-      callbacks: {
-        label: (ctx: TooltipItem<"line">) => ` ${formatUsd(ctx.parsed.y ?? 0)}`,
-      },
-    },
-  },
-  scales: {
-    x: {
-      type: "time" as const,
-      time: {
-        tooltipFormat: "MMM d, yyyy",
-        displayFormats: { day: "MMM d", week: "MMM d", month: "MMM yyyy" },
-        minUnit: "day" as const,
-      },
-      grid: { color: "rgba(255,255,255,0.04)" },
-      ticks: {
-        color: "rgba(255,255,255,0.35)",
-        maxRotation: 0,
-        maxTicksLimit: 6,
-      },
-    },
-    y: {
-      grid: { color: "rgba(255,255,255,0.04)" },
-      ticks: {
-        color: "rgba(255,255,255,0.35)",
-        callback: (v: number | string) =>
-          formatUsd(typeof v === "string" ? parseFloat(v) : v),
-      },
-    },
-  },
-};
+const btcOptions = makePriceChartOptions(2);
+const kasOptions = makePriceChartOptions(3);
 </script>
 
 <template>
@@ -153,7 +106,7 @@ const baseOptions = {
           v-if="btcChartData"
           :key="selectedRange"
           :data="btcChartData"
-          :options="baseOptions"
+          :options="btcOptions"
         />
         <div v-else class="empty-chart">
           {{
@@ -175,7 +128,7 @@ const baseOptions = {
           v-if="kasChartData"
           :key="selectedRange"
           :data="kasChartData"
-          :options="baseOptions"
+          :options="kasOptions"
         />
         <div v-else class="empty-chart">
           {{
