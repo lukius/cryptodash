@@ -316,7 +316,7 @@ async def test_spa_fallback_serves_index_for_client_routes(app_client):
     response = await app_client.get("/wallet/abc-123")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert "<div id=\"app\">" in response.text or "id=app" in response.text
+    assert '<div id="app">' in response.text or "id=app" in response.text
 
 
 @pytest.mark.asyncio
