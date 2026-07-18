@@ -11,6 +11,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.1] — 2026-07-18
+
+### Fixed
+
+- **HD wallet transaction list**: same-block transactions could display a running balance inconsistent with their order. Transactions now sort deterministically by (timestamp, block height, tx hash) everywhere — in the running-balance computation and in the transaction list — and a one-time startup task repairs previously stored running balances.
+- **Portfolio value chart**: the history endpoints issued one SQL query per wallet per data point and returned every stored snapshot, taking minutes to render on a database with months of live snapshots. Balance and price series are now merged in memory (a handful of queries total) and downsampled to at most 500 points.
+- **Session persistence**: a transient failure of the auth status check (backend restarting, network blip) wiped the stored 30-day "remember me" token and forced a re-login. The token is now only cleared when the server authoritatively reports the session invalid.
+- **Wallet table**: the bottom border of the tag column no longer drifts out of line with the rest of the row (flex layout moved off the `<td>`), and collapsed HD expand rows no longer paint a stray second separator line.
+- **Logos**: the glow behind the circular logo used `box-shadow`, which lit everything around the image's square box and left a dark plate visible around the circle. Now uses `filter: drop-shadow`, which follows the logo's circular shape.
+
+---
+
 ## [1.0.0] — 2026-04-27
 
 Initial release of CryptoDash.
@@ -59,5 +71,6 @@ Initial release of CryptoDash.
 - Backend: 20 pytest test modules covering auth, wallets, dashboard, settings, refresh, history, scheduler, security, repositories, models, database, exception handlers, and all three external API clients
 - Frontend: Vitest component and store tests (WalletTable, AddWalletDialog, TimeRangeSelector, auth store, wallets store)
 
-[Unreleased]: https://github.com/lukius/cryptodash/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/lukius/cryptodash/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/lukius/cryptodash/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/lukius/cryptodash/releases/tag/v1.0.0
