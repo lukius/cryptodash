@@ -385,6 +385,45 @@ async def test_get_xpub_transactions_all_paginates(client):
 
 
 @respx.mock
+async def test_get_xpub_transactions_same_block_sorted_by_txid(client):
+    """Txs sharing block_time and block_height sort by txid so the running
+    balance is computed in the same deterministic order they are displayed."""
+    addr = "bc1qaaa"
+    tokens = [_token(addr, 0, transfers=3)]
+    transactions = [
+        _tx(
+            txid="bbb",
+            block_time=1700000000,
+            block_height=820000,
+            vout=[_vout(addr, 1_000_000)],
+        ),
+        _tx(
+            txid="aaa",
+            block_time=1700000000,
+            block_height=820000,
+            vout=[_vout(addr, 2_000_000)],
+        ),
+        _tx(
+            txid="ccc",
+            block_time=1700001000,
+            block_height=820001,
+            vout=[_vout(addr, 3_000_000)],
+        ),
+    ]
+    respx.get(url__regex=XPUB_URL_RE).mock(
+        return_value=httpx.Response(
+            200,
+            json=_txs_page_response(
+                page=1, total_pages=1, transactions=transactions, tokens=tokens
+            ),
+        )
+    )
+
+    txs = await client.get_xpub_transactions_all(ZPUB)
+    assert [t.tx_hash for t in txs] == ["aaa", "bbb", "ccc"]
+
+
+@respx.mock
 async def test_get_xpub_transactions_all_skips_unconfirmed(client):
     """Transactions with confirmations=0 / blockTime=null are excluded."""
     addr = "bc1qaaa"

@@ -158,8 +158,10 @@ class HistoryService:
         # Fetch raw transactions from the appropriate client
         raw_txs = await self._fetch_raw_transactions(wallet)
 
-        # Sort ascending by timestamp for correct running balance
-        sorted_raw = sorted(raw_txs, key=lambda t: t["_timestamp"])
+        # Sort ascending by timestamp for correct running balance; block_height
+        # and tx_hash break same-timestamp ties deterministically, matching the
+        # display ordering in TransactionRepository.
+        sorted_raw = sorted(raw_txs, key=_chronological_key)
 
         # Build Transaction records, deduplicating by hash
         tx_records: list[Transaction] = []
@@ -275,8 +277,8 @@ class HistoryService:
         if not new_raw:
             return 0
 
-        # Sort ascending so running balance is correct
-        sorted_raw = sorted(new_raw, key=lambda t: t["_timestamp"])
+        # Sort ascending so running balance is correct (deterministic tie-break)
+        sorted_raw = sorted(new_raw, key=_chronological_key)
 
         running_balance = current_balance
         now = datetime.now(timezone.utc)
@@ -585,6 +587,12 @@ class HistoryService:
 # ------------------------------------------------------------------
 # Pure helper functions
 # ------------------------------------------------------------------
+
+
+def _chronological_key(tx: dict) -> tuple:
+    """Sort key for normalized tx dicts: timestamp, then block_height, then
+    tx_hash — must stay consistent with TransactionRepository's ordering."""
+    return (tx["_timestamp"], tx.get("_block_height") or 0, tx["_tx_hash"])
 
 
 def _normalize_btc_tx(tx: dict) -> dict:

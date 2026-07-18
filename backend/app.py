@@ -59,6 +59,10 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
 
+    from backend.services.maintenance import recompute_transaction_balances
+
+    await recompute_transaction_balances(async_session)
+
     app.state.btc_client = BitcoinClient()
     app.state.kas_client = KaspaClient()
     app.state.coingecko_client = CoinGeckoClient()
