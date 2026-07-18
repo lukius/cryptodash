@@ -180,6 +180,38 @@ async def test_full_import_stores_transactions(session_factory, wallet):
 
 
 # ---------------------------------------------------------------------------
+# test_full_import_same_timestamp_balance_order
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_full_import_same_timestamp_balance_order(session_factory, wallet):
+    """Two txs sharing a timestamp+block get running balances assigned in
+    tx_hash order, matching the deterministic display order."""
+    t = ts(2024, 1, 1)
+    txs = [
+        make_btc_tx("bbb", 33_032_118, 800_000, t),
+        make_btc_tx("aaa", 5_717_685, 800_000, t),
+    ]
+    btc_client, kas_client, coingecko_client, ws_manager = make_mock_clients(
+        btc_txs=txs
+    )
+
+    service = HistoryService(
+        session_factory, btc_client, kas_client, coingecko_client, ws_manager
+    )
+    await service.full_import(wallet)
+
+    async with session_factory() as s:
+        tx_repo = TransactionRepository(s)
+        stored = await tx_repo.list_by_wallet(wallet.id)
+
+    by_hash = {tx.tx_hash: tx.balance_after for tx in stored}
+    assert Decimal(by_hash["aaa"]) == Decimal("0.05717685")
+    assert Decimal(by_hash["bbb"]) == Decimal("0.38749803")
+
+
+# ---------------------------------------------------------------------------
 # test_full_import_deduplicates
 # ---------------------------------------------------------------------------
 

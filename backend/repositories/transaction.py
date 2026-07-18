@@ -25,11 +25,26 @@ class TransactionRepository:
         )
         return result.scalar_one_or_none()
 
+    # Chronological ordering with deterministic tie-breaks. Same-block txs share
+    # a timestamp, so block_height/tx_hash must break ties the same way in every
+    # query — and in the running-balance computation — or the displayed
+    # balance_after chain becomes inconsistent.
+    _ORDER_ASC = (
+        Transaction.timestamp.asc(),
+        Transaction.block_height.asc(),
+        Transaction.tx_hash.asc(),
+    )
+    _ORDER_DESC = (
+        Transaction.timestamp.desc(),
+        Transaction.block_height.desc(),
+        Transaction.tx_hash.desc(),
+    )
+
     async def list_by_wallet(self, wallet_id: str) -> list[Transaction]:
         result = await self.db.execute(
             select(Transaction)
             .where(Transaction.wallet_id == wallet_id)
-            .order_by(Transaction.timestamp.asc())
+            .order_by(*self._ORDER_ASC)
         )
         return list(result.scalars().all())
 
@@ -45,7 +60,7 @@ class TransactionRepository:
         result = await self.db.execute(
             select(Transaction)
             .where(Transaction.wallet_id == wallet_id)
-            .order_by(Transaction.timestamp.desc())
+            .order_by(*self._ORDER_DESC)
             .offset(offset)
             .limit(limit)
         )
@@ -61,7 +76,7 @@ class TransactionRepository:
                 Transaction.timestamp >= start,
                 Transaction.timestamp <= end,
             )
-            .order_by(Transaction.timestamp.asc())
+            .order_by(*self._ORDER_ASC)
         )
         return list(result.scalars().all())
 
@@ -90,10 +105,7 @@ class TransactionRepository:
         result = await self.db.execute(
             select(Transaction)
             .where(Transaction.wallet_id == wallet_id)
-            .order_by(
-                Transaction.block_height.desc().nullslast(),
-                Transaction.timestamp.desc(),
-            )
+            .order_by(*self._ORDER_DESC)
             .limit(1)
         )
         return result.scalar_one_or_none()

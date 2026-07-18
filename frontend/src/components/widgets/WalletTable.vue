@@ -150,9 +150,11 @@ function navigateToWallet(wallet: WalletResponse) {
           <template v-for="wallet in sortedWallets" :key="wallet.id">
             <tr @click="navigateToWallet(wallet)">
               <td class="tag-cell">
-                <EditTagInput :wallet-id="wallet.id" :tag="wallet.tag" />
-                <HdBadge v-if="wallet.wallet_type === 'hd'" />
-                <WalletStatusBadge :wallet="wallet" />
+                <div class="tag-cell-content">
+                  <EditTagInput :wallet-id="wallet.id" :tag="wallet.tag" />
+                  <HdBadge v-if="wallet.wallet_type === 'hd'" />
+                  <WalletStatusBadge :wallet="wallet" />
+                </div>
               </td>
               <td>
                 <span
@@ -356,9 +358,15 @@ function navigateToWallet(wallet: WalletResponse) {
   white-space: normal !important;
 }
 
+/* Flex on an inner wrapper, not the <td>: a flex td stops behaving as a table
+   cell and won't stretch to the row height, leaving its bottom border out of
+   line with the rest of the row. */
 .tag-cell {
   font-weight: 600;
   color: #fff;
+}
+
+.tag-cell-content {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -451,6 +459,9 @@ function navigateToWallet(wallet: WalletResponse) {
 
 .expand-cell {
   padding: 0 1.5rem !important;
+  /* The collapsed expand row has zero height; without this its border paints
+     a stray second line right under the wallet row. */
+  border-bottom: none !important;
 }
 
 .expand-enter-active,

@@ -59,6 +59,10 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
 
+    from backend.services.maintenance import recompute_transaction_balances
+
+    await recompute_transaction_balances(async_session)
+
     app.state.btc_client = BitcoinClient()
     app.state.kas_client = KaspaClient()
     app.state.coingecko_client = CoinGeckoClient()
@@ -111,7 +115,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CryptoDash", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="CryptoDash", version="1.0.1", lifespan=lifespan)
 
     # CORS — allow Vite dev server
     app.add_middleware(

@@ -747,6 +747,102 @@ async def test_transaction_list_by_wallet_paginated_ordered_newest_first(db_sess
     assert results[0].timestamp >= results[1].timestamp >= results[2].timestamp
 
 
+async def test_transaction_list_by_wallet_paginated_tie_break_by_tx_hash(db_session):
+    """Same-timestamp/same-block txs must render in a deterministic order that
+    matches the running-balance chain: tx_hash breaks the tie (DESC when
+    listing newest-first)."""
+    user = make_user("zelda")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id)
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = TransactionRepository(db_session)
+    shared_time = _now()
+    # Insert in an order that does NOT match the expected output order
+    txs = [
+        make_transaction(
+            wallet.id, "bbb_tx", block_height=891092, timestamp=shared_time
+        ),
+        make_transaction(
+            wallet.id, "aaa_tx", block_height=891092, timestamp=shared_time
+        ),
+        make_transaction(
+            wallet.id,
+            "ccc_tx",
+            block_height=891093,
+            timestamp=shared_time + timedelta(minutes=2),
+        ),
+    ]
+    await repo.bulk_create(txs)
+    await db_session.flush()
+
+    results, _ = await repo.list_by_wallet_paginated(wallet.id, limit=10, offset=0)
+    assert [tx.tx_hash for tx in results] == ["ccc_tx", "bbb_tx", "aaa_tx"]
+
+
+async def test_transaction_list_by_wallet_tie_break_by_tx_hash(db_session):
+    """Ascending listing (used for balance computation) breaks timestamp ties
+    by block_height then tx_hash so the order is fully deterministic."""
+    user = make_user("zoe")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id)
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = TransactionRepository(db_session)
+    shared_time = _now()
+    txs = [
+        make_transaction(
+            wallet.id, "bbb_tx", block_height=891092, timestamp=shared_time
+        ),
+        make_transaction(
+            wallet.id, "aaa_tx", block_height=891092, timestamp=shared_time
+        ),
+        make_transaction(
+            wallet.id, "zzz_tx", block_height=891091, timestamp=shared_time
+        ),
+    ]
+    await repo.bulk_create(txs)
+    await db_session.flush()
+
+    listed = await repo.list_by_wallet(wallet.id)
+    assert [tx.tx_hash for tx in listed] == ["zzz_tx", "aaa_tx", "bbb_tx"]
+
+
+async def test_transaction_get_latest_for_wallet_tie_break_by_tx_hash(db_session):
+    """With identical timestamp and block height, the tx with the greatest
+    tx_hash is 'latest' — consistent with the display/compute ordering."""
+    user = make_user("zula")
+    db_session.add(user)
+    await db_session.flush()
+
+    wallet = make_wallet(user.id)
+    db_session.add(wallet)
+    await db_session.flush()
+
+    repo = TransactionRepository(db_session)
+    shared_time = _now()
+    txs = [
+        make_transaction(
+            wallet.id, "bbb_tx", block_height=891092, timestamp=shared_time
+        ),
+        make_transaction(
+            wallet.id, "aaa_tx", block_height=891092, timestamp=shared_time
+        ),
+    ]
+    await repo.bulk_create(txs)
+    await db_session.flush()
+
+    latest = await repo.get_latest_for_wallet(wallet.id)
+    assert latest is not None
+    assert latest.tx_hash == "bbb_tx"
+
+
 async def test_transaction_list_by_wallet_paginated_empty_wallet(db_session):
     repo = TransactionRepository(db_session)
     results, total = await repo.list_by_wallet_paginated(_uuid(), limit=50, offset=0)

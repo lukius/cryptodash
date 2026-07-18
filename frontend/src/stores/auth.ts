@@ -46,8 +46,11 @@ export const useAuthStore = defineStore("auth", () => {
         clearToken();
       }
     } catch {
-      accountExists.value = false;
-      clearToken();
+      // Transient failure (backend restarting, network blip). Only an
+      // authoritative `authenticated: false` above may clear the stored
+      // token — wiping it here would force a re-login despite a valid
+      // 30-day remember-me session. accountExists stays null so the next
+      // navigation retries the status fetch.
     }
   }
 

@@ -72,8 +72,9 @@ async function onLogout() {
 .logo-mark {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
-  box-shadow: 0 0 24px var(--accent-glow);
+  /* drop-shadow follows the SVG's circular alpha; box-shadow would glow from
+     the square border box, leaving a dark plate around the circle. */
+  filter: drop-shadow(0 0 24px var(--accent-glow));
   flex-shrink: 0;
 }
 

@@ -114,6 +114,23 @@ describe("WalletTable", () => {
     expect(wrapper.text()).toContain("393,964.62 KAS");
   });
 
+  it("tag cell keeps table-cell layout, flexing an inner wrapper instead", async () => {
+    // A <td> with display:flex does not stretch to the row height, so its
+    // bottom border drifts out of line with the other cells in the row.
+    const store = useWalletsStore();
+    store.wallets = [
+      makeWallet({ id: "w1", tag: "Cold Storage", network: "BTC" }),
+    ] as ReturnType<typeof makeWallet>[];
+
+    const wrapper = mount(WalletTable);
+
+    const tagCell = wrapper.find("td.tag-cell");
+    expect(tagCell.exists()).toBe(true);
+    const inner = tagCell.find(".tag-cell-content");
+    expect(inner.exists()).toBe(true);
+    expect(inner.text()).toContain("Cold Storage");
+  });
+
   it("shows empty state when wallets is empty", async () => {
     const store = useWalletsStore();
     store.wallets = [];

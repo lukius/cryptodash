@@ -183,10 +183,13 @@ class XpubClient(BaseClient):
             page += 1
             await asyncio.sleep(self._PAGE_DELAY_SECONDS)
 
+        # tx_hash last: deterministic order for txs sharing a block, matching
+        # TransactionRepository's display ordering.
         results.sort(
             key=lambda t: (
                 t.timestamp if t.timestamp is not None else 0,
                 t.block_height or 0,
+                t.tx_hash,
             )
         )
         return results

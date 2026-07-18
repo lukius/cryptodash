@@ -64,6 +64,16 @@ router.beforeEach(async (to) => {
     return { path: "/login", query: { redirect: to.fullPath } };
   }
 
+  // Status fetch failed (accountExists unknown): don't wipe anything — send
+  // unauthenticated visitors to /login; token holders proceed and retry later.
+  if (
+    auth.accountExists === null &&
+    !auth.isAuthenticated &&
+    !PUBLIC_ROUTES.includes(to.path)
+  ) {
+    return { path: "/login", query: { redirect: to.fullPath } };
+  }
+
   // Authenticated users should not access /login or /setup
   if (auth.isAuthenticated && PUBLIC_ROUTES.includes(to.path)) {
     return "/";
