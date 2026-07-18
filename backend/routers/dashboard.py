@@ -39,12 +39,97 @@ _RANGE_DAYS: dict[str, int | None] = {
     "all": None,
 }
 
+# Cap on data points returned by the history endpoints. A months-old database
+# accumulates tens of thousands of live snapshots; charts need far fewer points.
+MAX_HISTORY_POINTS = 500
+
 
 def _range_start(range_param: str) -> datetime | None:
     days = _RANGE_DAYS.get(range_param)
     if days is None:
         return None
     return datetime.now(timezone.utc) - timedelta(days=days)
+
+
+def _as_utc(ts: datetime) -> datetime:
+    return ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts
+
+
+def _downsample(items: list, ts_of, max_points: int = MAX_HISTORY_POINTS) -> list:
+    """Reduce an ascending time series to at most max_points items.
+
+    Splits the covered time span into equal buckets and keeps the last item of
+    each occupied bucket, so the newest item always survives and uneven
+    densities (daily historical + frequent live snapshots) stay proportional.
+    """
+    if len(items) <= max_points:
+        return items
+    first = ts_of(items[0])
+    span = (ts_of(items[-1]) - first).total_seconds()
+    if span <= 0:
+        return items[-max_points:]
+    buckets: dict[int, object] = {}
+    for item in items:
+        offset = (ts_of(item) - first).total_seconds()
+        idx = min(int(offset / span * max_points), max_points - 1)
+        buckets[idx] = item
+    return [buckets[i] for i in sorted(buckets)]
+
+
+class _SeriesCursor:
+    """Walk-forward nearest-before lookup over an ascending (ts, value) series.
+
+    Replaces per-timestamp SQL `get_nearest_before` queries: lookups must be
+    performed in ascending timestamp order, each advancing the cursor.
+    """
+
+    def __init__(self, series: list[tuple[datetime, Decimal]]) -> None:
+        self._series = series
+        self._i = 0
+        self._current: Decimal | None = None
+
+    def value_at(self, ts: datetime) -> Decimal | None:
+        while self._i < len(self._series) and self._series[self._i][0] <= ts:
+            self._current = self._series[self._i][1]
+            self._i += 1
+        return self._current
+
+
+async def _load_balance_series(
+    snap_repo: BalanceSnapshotRepository,
+    wallet_id: str,
+    start: datetime | None,
+    end: datetime,
+) -> list[tuple[datetime, Decimal]]:
+    """Balance snapshots in [start, end] plus the nearest one before start (the
+    baseline), as an ascending (ts, balance) list."""
+    series: list[tuple[datetime, Decimal]] = []
+    if start is not None:
+        base = await snap_repo.get_nearest_before(wallet_id, start)
+        if base is not None:
+            series.append((_as_utc(base.timestamp), Decimal(base.balance)))
+    window_start = start or datetime.min.replace(tzinfo=timezone.utc)
+    for snap in await snap_repo.get_range(wallet_id, window_start, end):
+        series.append((_as_utc(snap.timestamp), Decimal(snap.balance)))
+    return series
+
+
+async def _load_price_series(
+    price_repo: PriceSnapshotRepository,
+    coin: str,
+    start: datetime | None,
+    end: datetime,
+) -> list[tuple[datetime, Decimal]]:
+    """Price snapshots in [start, end] plus the baseline before start."""
+    series: list[tuple[datetime, Decimal]] = []
+    if start is not None:
+        base = await price_repo.get_nearest_before(coin, start)
+        if base is not None:
+            series.append((_as_utc(base.timestamp), Decimal(base.price_usd)))
+    window_start = start or datetime.min.replace(tzinfo=timezone.utc)
+    for snap in await price_repo.get_range(coin, window_start, end):
+        series.append((_as_utc(snap.timestamp), Decimal(snap.price_usd)))
+    return series
 
 
 @router.get("/summary")
@@ -178,61 +263,54 @@ async def get_portfolio_history(
     # (stored at HH=23, MM=59, SS=59) are included in the query window.
     end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-    # Gather all balance snapshots per wallet in range
-    # We build a unified timeline: bucket by timestamp, sum per timestamp key
-    # Strategy: collect all snapshots, sort by time, aggregate per wallet at each point
-    all_snapshots: list[tuple[datetime, str, Decimal]] = []  # (ts, wallet_id, balance)
-
+    # Load each wallet's balance series (range + baseline) once, then merge in
+    # memory. The previous implementation issued nearest-before SQL queries per
+    # wallet per unique timestamp — O(timestamps × wallets) queries, which took
+    # minutes on a database with months of live snapshots.
+    wallet_series: dict[str, list[tuple[datetime, Decimal]]] = {}
+    unique_ts: set[datetime] = set()
     for wallet in wallets:
-        snaps = await snap_repo.get_range(
-            wallet.id, start or datetime.min.replace(tzinfo=timezone.utc), end
-        )
-        for snap in snaps:
-            ts = snap.timestamp
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            all_snapshots.append((ts, wallet.id, Decimal(snap.balance)))
+        series = await _load_balance_series(snap_repo, wallet.id, start, end)
+        wallet_series[wallet.id] = series
+        window_start = start or datetime.min.replace(tzinfo=timezone.utc)
+        unique_ts.update(ts for ts, _ in series if ts >= window_start)
 
-    if not all_snapshots:
+    if not unique_ts:
         return PortfolioHistoryResponse(data_points=[], range=range, unit=unit)
 
-    # Group by timestamp (exact match). For portfolio history use a per-point approach.
-    # For each unique timestamp, get all wallet balances at that point and compute USD value.
-    unique_timestamps = sorted({ts for ts, _, _ in all_snapshots})
+    coins = {w.network for w in wallets}
+    if unit in ("btc", "kas"):
+        coins.add(unit.upper())
+    price_cursors = {
+        coin: _SeriesCursor(await _load_price_series(price_repo, coin, start, end))
+        for coin in coins
+    }
+    wallet_cursors = {wid: _SeriesCursor(s) for wid, s in wallet_series.items()}
+
+    sampled_ts = _downsample(sorted(unique_ts), ts_of=lambda ts: ts)
 
     data_points: list[HistoryDataPoint] = []
-
-    for ts in unique_timestamps:
-        # Get the balance for each wallet at this timestamp (nearest-before or exact)
+    for ts in sampled_ts:
         total_value = Decimal("0")
         has_value = False
 
         for wallet in wallets:
-            bal_snap = await snap_repo.get_nearest_before(wallet.id, ts)
-            if bal_snap is None:
+            balance = wallet_cursors[wallet.id].value_at(ts)
+            if balance is None:
                 continue
-            balance = Decimal(bal_snap.balance)
-
-            price_snap = await price_repo.get_nearest_before(wallet.network, ts)
-            if price_snap is None:
+            price = price_cursors[wallet.network].value_at(ts)
+            if price is None:
                 continue
-            price = Decimal(price_snap.price_usd)
-
             total_value += balance * price
             has_value = True
 
         if has_value:
             display_value = total_value
-            if unit == "btc":
-                btc_snap = await price_repo.get_nearest_before("BTC", ts)
-                if btc_snap is None or Decimal(btc_snap.price_usd) == 0:
+            if unit in ("btc", "kas"):
+                unit_price = price_cursors[unit.upper()].value_at(ts)
+                if unit_price is None or unit_price == 0:
                     continue
-                display_value = total_value / Decimal(btc_snap.price_usd)
-            elif unit == "kas":
-                kas_snap = await price_repo.get_nearest_before("KAS", ts)
-                if kas_snap is None or Decimal(kas_snap.price_usd) == 0:
-                    continue
-                display_value = total_value / Decimal(kas_snap.price_usd)
+                display_value = total_value / unit_price
             data_points.append(
                 HistoryDataPoint(
                     timestamp=utc_isoformat(ts),
@@ -274,19 +352,22 @@ async def get_wallet_history(
     snaps = await snap_repo.get_range(
         wallet_id, start or datetime.min.replace(tzinfo=timezone.utc), end
     )
+    snaps = _downsample(snaps, ts_of=lambda s: _as_utc(s.timestamp))
+
+    price_cursor = _SeriesCursor(
+        await _load_price_series(price_repo, wallet.network, start, end)
+    )
 
     data_points: list[HistoryDataPoint] = []
     for snap in snaps:
-        ts = snap.timestamp
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+        ts = _as_utc(snap.timestamp)
         balance = Decimal(snap.balance)
 
         if unit == "usd":
-            price_snap = await price_repo.get_nearest_before(wallet.network, ts)
-            if price_snap is None:
+            price = price_cursor.value_at(ts)
+            if price is None:
                 continue
-            value = balance * Decimal(price_snap.price_usd)
+            value = balance * price
         else:
             value = balance
 
@@ -331,7 +412,7 @@ async def get_price_history(
 
     def to_data_points(snaps) -> list[HistoryDataPoint]:
         result = []
-        for snap in snaps:
+        for snap in _downsample(snaps, ts_of=lambda s: _as_utc(s.timestamp)):
             result.append(
                 HistoryDataPoint(
                     timestamp=utc_isoformat(snap.timestamp),

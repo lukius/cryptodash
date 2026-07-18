@@ -394,6 +394,163 @@ async def test_portfolio_history_returns_data_points(
     datetime.fromisoformat(ts.replace("Z", "+00:00"))  # must be parseable
 
 
+async def _seed_dense_snapshots(fresh_engine, n_snapshots: int, days: int = 30):
+    """Add n_snapshots live balance snapshots (and hourly prices) for the BTC
+    wallet spread over the past `days` days."""
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    now = datetime.now(timezone.utc)
+    step = timedelta(days=days) / n_snapshots
+    async with session_factory() as db:
+        for i in range(n_snapshots):
+            ts = now - timedelta(days=days) + step * (i + 1)
+            db.add(
+                BalanceSnapshot(
+                    id=str(uuid4()),
+                    wallet_id="wallet-btc-1",
+                    balance=f"{1.0 + i * 0.0001:.8f}",
+                    timestamp=ts,
+                    source="live",
+                )
+            )
+        for i in range(days * 24):
+            db.add(
+                PriceSnapshot(
+                    id=str(uuid4()),
+                    coin="BTC",
+                    price_usd="50000",
+                    timestamp=now - timedelta(days=days) + timedelta(hours=i),
+                )
+            )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_downsamples_dense_data(
+    dashboard_client, auth_headers, seeded_db, fresh_engine
+):
+    """Months of frequent live snapshots must not produce thousands of data
+    points — the series is downsampled to a bounded size, keeping the newest
+    point so the chart ends at the current value."""
+    from backend.routers.dashboard import MAX_HISTORY_POINTS
+
+    await _seed_dense_snapshots(fresh_engine, n_snapshots=2000)
+
+    resp = await dashboard_client.get(
+        "/api/dashboard/portfolio-history?range=30d", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    points = resp.json()["data_points"]
+    assert 0 < len(points) <= MAX_HISTORY_POINTS
+
+    # Newest snapshot must survive downsampling
+    timestamps = [p["timestamp"] for p in points]
+    assert timestamps == sorted(timestamps)
+
+
+@pytest.mark.asyncio
+async def test_portfolio_history_bounded_query_count(
+    dashboard_client, auth_headers, seeded_db, fresh_engine
+):
+    """The endpoint must not issue per-data-point SQL queries (the old
+    behaviour was O(timestamps × wallets) queries, taking minutes on a
+    months-old database)."""
+    from sqlalchemy import event
+
+    await _seed_dense_snapshots(fresh_engine, n_snapshots=600)
+
+    statements: list[str] = []
+
+    def _count(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(fresh_engine.sync_engine, "before_cursor_execute", _count)
+    try:
+        resp = await dashboard_client.get(
+            "/api/dashboard/portfolio-history?range=30d", headers=auth_headers
+        )
+    finally:
+        event.remove(fresh_engine.sync_engine, "before_cursor_execute", _count)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["data_points"]) > 0
+    # auth (~3) + wallets + per-wallet snapshots + price ranges/baselines
+    assert len(statements) < 25, f"{len(statements)} queries issued"
+
+
+@pytest.mark.asyncio
+async def test_wallet_history_downsamples_dense_data(
+    dashboard_client, auth_headers, seeded_db, fresh_engine
+):
+    from backend.routers.dashboard import MAX_HISTORY_POINTS
+
+    await _seed_dense_snapshots(fresh_engine, n_snapshots=2000)
+
+    resp = await dashboard_client.get(
+        "/api/dashboard/wallet-history/wallet-btc-1?range=30d&unit=usd",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    points = resp.json()["data_points"]
+    assert 0 < len(points) <= MAX_HISTORY_POINTS
+
+
+@pytest.mark.asyncio
+async def test_wallet_history_bounded_query_count(
+    dashboard_client, auth_headers, seeded_db, fresh_engine
+):
+    from sqlalchemy import event
+
+    await _seed_dense_snapshots(fresh_engine, n_snapshots=600)
+
+    statements: list[str] = []
+
+    def _count(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(fresh_engine.sync_engine, "before_cursor_execute", _count)
+    try:
+        resp = await dashboard_client.get(
+            "/api/dashboard/wallet-history/wallet-btc-1?range=30d&unit=usd",
+            headers=auth_headers,
+        )
+    finally:
+        event.remove(fresh_engine.sync_engine, "before_cursor_execute", _count)
+
+    assert resp.status_code == 200
+    assert len(statements) < 25, f"{len(statements)} queries issued"
+
+
+@pytest.mark.asyncio
+async def test_price_history_downsamples_dense_data(
+    dashboard_client, auth_headers, seeded_db, fresh_engine
+):
+    from backend.routers.dashboard import MAX_HISTORY_POINTS
+
+    session_factory = async_sessionmaker(
+        fresh_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    now = datetime.now(timezone.utc)
+    async with session_factory() as db:
+        for i in range(1500):
+            db.add(
+                PriceSnapshot(
+                    id=str(uuid4()),
+                    coin="BTC",
+                    price_usd="50000",
+                    timestamp=now - timedelta(days=30) + timedelta(minutes=i * 28),
+                )
+            )
+        await db.commit()
+
+    resp = await dashboard_client.get(
+        "/api/dashboard/price-history?range=30d", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert 0 < len(resp.json()["btc"]) <= MAX_HISTORY_POINTS
+
+
 @pytest.mark.asyncio
 async def test_portfolio_history_all_range(dashboard_client, auth_headers, seeded_db):
     resp = await dashboard_client.get(
