@@ -153,6 +153,49 @@ describe("useAuthStore", () => {
     expect(api.get).not.toHaveBeenCalled();
   });
 
+  // ---- Transient /auth/status failures must not destroy a valid session ----
+
+  it("init() keeps the stored token when /auth/status fails transiently", async () => {
+    localStorage.setItem("auth_token", "remember-tok");
+    const api = makeApi({
+      get: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    });
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useAuthStore();
+    await store.init();
+
+    // A network error is not an authoritative "session invalid" — the 30-day
+    // remember-me token must survive so the user is not forced to re-login.
+    expect(store.token).toBe("remember-tok");
+    expect(localStorage.getItem("auth_token")).toBe("remember-tok");
+    expect(store.accountExists).toBeNull();
+  });
+
+  it("init() retries the status fetch on the next call after a failure", async () => {
+    localStorage.setItem("auth_token", "remember-tok");
+    const api = makeApi({
+      get: vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockResolvedValueOnce({
+          account_exists: true,
+          authenticated: true,
+          username: "satoshi",
+        }),
+    });
+    vi.mocked(useApi).mockReturnValue(api as ReturnType<typeof useApi>);
+
+    const store = useAuthStore();
+    await store.init();
+    await store.init();
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(store.accountExists).toBe(true);
+    expect(store.username).toBe("satoshi");
+    expect(store.token).toBe("remember-tok");
+  });
+
   // ---- setup() action ----
 
   it("setup() calls POST /auth/setup and stores token in sessionStorage by default", async () => {

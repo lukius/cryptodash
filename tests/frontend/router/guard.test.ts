@@ -63,6 +63,16 @@ function buildRouter() {
       return { path: "/login", query: { redirect: to.fullPath } };
     }
 
+    // Status fetch failed (accountExists unknown): don't wipe anything — send
+    // unauthenticated visitors to /login; token holders proceed and retry later.
+    if (
+      auth.accountExists === null &&
+      !auth.isAuthenticated &&
+      !PUBLIC_ROUTES.includes(to.path)
+    ) {
+      return { path: "/login", query: { redirect: to.fullPath } };
+    }
+
     if (auth.isAuthenticated && PUBLIC_ROUTES.includes(to.path)) {
       return "/";
     }
@@ -188,5 +198,35 @@ describe("Router auth guard", () => {
 
     const settingsCalls = getApi.mock.calls.filter(([url]) => url === "/settings/");
     expect(settingsCalls).toHaveLength(1);
+  });
+
+  it("keeps the stored token and proceeds when /auth/status fails and a token exists", async () => {
+    localStorage.setItem("auth_token", "remember-tok");
+    vi.mocked(useApi).mockReturnValue(
+      makeApi({
+        get: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+      }) as ReturnType<typeof useApi>,
+    );
+
+    const router = buildRouter();
+    await router.push("/");
+
+    const auth = useAuthStore();
+    expect(auth.token).toBe("remember-tok");
+    expect(localStorage.getItem("auth_token")).toBe("remember-tok");
+    expect(router.currentRoute.value.path).toBe("/");
+  });
+
+  it("redirects to /login (not /setup) when /auth/status fails and no token exists", async () => {
+    vi.mocked(useApi).mockReturnValue(
+      makeApi({
+        get: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+      }) as ReturnType<typeof useApi>,
+    );
+
+    const router = buildRouter();
+    await router.push("/");
+
+    expect(router.currentRoute.value.path).toBe("/login");
   });
 });
