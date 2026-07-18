@@ -239,10 +239,10 @@ async function handleSubmit() {
 .logo-icon {
   width: 48px;
   height: 48px;
-  border-radius: 14px;
-  box-shadow:
-    0 0 40px var(--accent-glow),
-    0 0 80px rgba(73, 234, 203, 0.15);
+  /* drop-shadow follows the SVG's circular alpha; box-shadow would glow from
+     the square border box, leaving a dark plate around the circle. */
+  filter: drop-shadow(0 0 40px var(--accent-glow))
+    drop-shadow(0 0 80px rgba(73, 234, 203, 0.15));
 }
 .logo-text {
   font-size: 1.75rem;
