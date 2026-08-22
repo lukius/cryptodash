@@ -152,3 +152,31 @@ async def test_4xx_not_retried(client):
 
     assert call_count == 1
     mock_sleep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# test_user_agent_is_project_branded — outbound UA identifies GhostStack
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_user_agent_is_project_branded(client):
+    """Requests carry a project-branded, non-generic User-Agent.
+
+    Trezor Blockbook sits behind Cloudflare, which blocks browser-like UAs on
+    xpub paths, so this header is load-bearing rather than cosmetic. Renames
+    and refactors must not drop it back to httpx's default or a browser string.
+    """
+    sent = {}
+
+    def side_effect(request):
+        sent["user_agent"] = request.headers.get("User-Agent")
+        return SUCCESS_RESPONSE
+
+    respx.get(ADDRESS_PATH).mock(side_effect=side_effect)
+
+    await client.get_balance(ADDRESS)
+
+    assert sent["user_agent"] == "GhostStack/1.0"
+    assert "Mozilla" not in sent["user_agent"]
+    assert "python-httpx" not in sent["user_agent"]

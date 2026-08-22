@@ -1,13 +1,13 @@
 ---
 name: Feature request
-about: Suggest a new feature or enhancement for CryptoDash
+about: Suggest a new feature or enhancement for GhostStack
 title: "[feat] "
 labels: enhancement
 ---
 
 ## Problem / use case
 
-<!-- What are you trying to do that CryptoDash doesn't currently support, or doesn't support well? Concrete examples are best. -->
+<!-- What are you trying to do that GhostStack doesn't currently support, or doesn't support well? Concrete examples are best. -->
 
 ## Proposed solution
 

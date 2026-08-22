@@ -9,14 +9,14 @@
     <div class="logo">
       <img src="/favicon.svg" alt="" class="logo-icon" />
       <div class="logo-text">
-        <span class="cr">Crypto</span><span class="da">Dash</span>
+        <span class="ghost">Ghost</span><span class="stack">Stack</span>
       </div>
     </div>
 
     <div class="auth-card">
       <h2>Create your account</h2>
       <p class="subtitle">
-        Set up CryptoDash for the first time. This is the only account — choose
+        Set up GhostStack for the first time. This is the only account — choose
         a strong password.
       </p>
 
@@ -304,11 +304,11 @@ async function handleSubmit() {
   letter-spacing: -0.03em;
   color: #fff;
 }
-.logo-text .cr {
-  color: var(--orange);
-}
-.logo-text .da {
+.logo-text .ghost {
   color: var(--accent);
+}
+.logo-text .stack {
+  color: var(--orange);
 }
 
 .auth-card {

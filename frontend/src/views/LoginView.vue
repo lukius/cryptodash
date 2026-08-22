@@ -9,7 +9,7 @@
     <div class="logo">
       <img src="/favicon.svg" alt="" class="logo-icon" />
       <div class="logo-text">
-        <span class="cr">Crypto</span><span class="da">Dash</span>
+        <span class="ghost">Ghost</span><span class="stack">Stack</span>
       </div>
     </div>
 
@@ -250,11 +250,11 @@ async function handleSubmit() {
   letter-spacing: -0.03em;
   color: #fff;
 }
-.logo-text .cr {
-  color: var(--orange);
-}
-.logo-text .da {
+.logo-text .ghost {
   color: var(--accent);
+}
+.logo-text .stack {
+  color: var(--orange);
 }
 
 .auth-card {

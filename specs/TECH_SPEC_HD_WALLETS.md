@@ -1,4 +1,4 @@
-# CryptoDash — Technical Specification Addendum: HD Wallet Support
+# GhostStack — Technical Specification Addendum: HD Wallet Support
 
 **Version:** 1.0
 **Date:** 2026-04-13
@@ -10,7 +10,7 @@
 
 ## 0. Scope and Reading Order
 
-This document specifies only the changes required to add HD wallet support on top of the existing CryptoDash codebase (described in `TECH_SPEC.md`). Readers should be familiar with `TECH_SPEC.md` before reading this document. All sections here are additive or override-specific subsections of the base spec. Where this document is silent, base spec behavior applies unchanged.
+This document specifies only the changes required to add HD wallet support on top of the existing GhostStack codebase (described in `TECH_SPEC.md`). Readers should be familiar with `TECH_SPEC.md` before reading this document. All sections here are additive or override-specific subsections of the base spec. Where this document is silent, base spec behavior applies unchanged.
 
 ---
 
@@ -1567,7 +1567,7 @@ All security properties from `TECH_SPEC.md §8` apply unchanged. Specific additi
 
 - **Extended public keys** are public key material. They do NOT grant spending ability and are stored unencrypted, consistent with how Bitcoin addresses are stored.
 - **Privacy note:** An xpub key allows address enumeration. This is a deliberate trade-off the user makes when exporting their xpub. No warning is shown in the UI (per func spec §8.b: "The user is assumed to be aware of this trade-off").
-- **No local derivation:** The system never derives child keys. It only forwards the xpub to blockchain.info and receives pre-derived addresses back. No BIP32 child key computation occurs in CryptoDash.
+- **No local derivation:** The system never derives child keys. It only forwards the xpub to blockchain.info and receives pre-derived addresses back. No BIP32 child key computation occurs in GhostStack.
 - **ypub/zpub conversion:** The `normalize_to_xpub()` function substitutes version bytes only. The underlying key material is NOT modified. The converted key is only used transiently in API calls and is never stored.
 
 ---

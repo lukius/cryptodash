@@ -58,6 +58,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: cryptodash:ci
+          tags: ghoststack:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

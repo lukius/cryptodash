@@ -1,4 +1,4 @@
-"""FastAPI application factory for CryptoDash."""
+"""FastAPI application factory for GhostStack."""
 
 import logging
 import os
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
         if expired_count:
             logger.info("Cleaned up %d expired session(s)", expired_count)
 
-    logger.info("CryptoDash running at http://%s:%s", app_config.host, app_config.port)
+    logger.info("GhostStack running at http://%s:%s", app_config.host, app_config.port)
 
     yield
 
@@ -111,11 +111,11 @@ async def lifespan(app: FastAPI):
     await app.state.kas_client.close()
     await app.state.coingecko_client.close()
     await app.state.xpub_client.close()
-    logger.info("CryptoDash stopped")
+    logger.info("GhostStack stopped")
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CryptoDash", version="1.0.1", lifespan=lifespan)
+    app = FastAPI(title="GhostStack", version="2.0.0", lifespan=lifespan)
 
     # CORS — allow Vite dev server
     app.add_middleware(

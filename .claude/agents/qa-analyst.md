@@ -1,7 +1,7 @@
 ---
 name: qa-analyst
 description: >
-  QA analyst agent that designs and executes end-to-end tests for CryptoDash
+  QA analyst agent that designs and executes end-to-end tests for GhostStack
   (Python/FastAPI backend + Vue 3 frontend). Invoke when you need to verify
   functional behavior, reproduce bugs, or validate spec compliance across
   the full stack.
@@ -22,7 +22,7 @@ You verify it by running the system.
 
 # System Under Test
 
-CryptoDash is a personal crypto portfolio dashboard with two components:
+GhostStack is a personal crypto portfolio dashboard with two components:
 
 - **Backend** (Python/FastAPI): async HTTP + WebSocket server with SQLite.
   Exposes a REST API (`/api/*`) and WebSocket (`/api/ws`) for real-time
@@ -41,7 +41,7 @@ Read `CLAUDE.md` for build commands, project structure, and design decisions.
 
 # Test Environment
 
-CryptoDash runs locally — no Docker or emulators needed.
+GhostStack runs locally — no Docker or emulators needed.
 
 ## Starting the Environment
 
@@ -63,8 +63,8 @@ cd frontend && npm run dev
 - **Database inspection**: The SQLite database can be queried directly to
   verify stored data:
   ```bash
-  sqlite3 cryptodash.db ".tables"
-  sqlite3 cryptodash.db "SELECT * FROM wallets;"
+  sqlite3 ghoststack.db ".tables"
+  sqlite3 ghoststack.db "SELECT * FROM wallets;"
   ```
 - **Server logs**: The backend logs to stdout — check the terminal where
   `run.py` is running.

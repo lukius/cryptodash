@@ -21,8 +21,8 @@ async function onLogout() {
       <router-link to="/" class="header-logo">
         <img src="/favicon.svg" alt="" class="logo-mark" />
         <span class="logo-title"
-          ><span class="logo-crypto">Crypto</span
-          ><span class="logo-dash">Dash</span></span
+          ><span class="logo-ghost">Ghost</span
+          ><span class="logo-stack">Stack</span></span
         >
       </router-link>
     </div>
@@ -84,12 +84,12 @@ async function onLogout() {
   letter-spacing: -0.03em;
 }
 
-.logo-crypto {
-  color: var(--btc-color);
+.logo-ghost {
+  color: var(--kas-color);
 }
 
-.logo-dash {
-  color: var(--kas-color);
+.logo-stack {
+  color: var(--btc-color);
 }
 
 .header-right {

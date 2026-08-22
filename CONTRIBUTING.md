@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to CryptoDash. This document covers how to set up a development environment, coding conventions, testing requirements, and the pull-request process.
+Thank you for your interest in contributing to GhostStack. This document covers how to set up a development environment, coding conventions, testing requirements, and the pull-request process.
 
 ## Table of Contents
 
@@ -23,8 +23,8 @@ Thank you for your interest in contributing to CryptoDash. This document covers 
 **Prerequisites:** Python 3.11+, Node.js 18+
 
 ```bash
-git clone https://github.com/lukius/cryptodash.git
-cd cryptodash
+git clone https://github.com/lukius/ghoststack.git
+cd ghoststack
 
 # Python — create virtualenv and install dev deps
 python -m venv .venv
@@ -81,7 +81,7 @@ The specs are the authoritative source of truth. If code and spec disagree, trea
 
 ## Architecture Overview
 
-CryptoDash is a single-page app backed by an async Python API. The layers are strictly separated:
+GhostStack is a single-page app backed by an async Python API. The layers are strictly separated:
 
 ```
 Frontend (Vue 3 SPA)
@@ -274,7 +274,7 @@ If you use Claude Code, the project includes a pre-configured setup that support
 A few non-obvious decisions documented in the codebase:
 
 - **bcrypt directly, not via passlib** — `passlib==1.7.4` is incompatible with `bcrypt>=4.x`. The project uses `bcrypt==5.0.0` directly. Do not reintroduce passlib.
-- **HD wallets use Trezor Blockbook, individual addresses use Mempool.space** — Blockbook accepts xpub/ypub/zpub natively and returns the full wallet balance + per-address breakdown in one call. Mempool.space does not support extended public keys. The `User-Agent: CryptoDash/1.0` header is required on Blockbook requests — generic UAs are blocked.
+- **HD wallets use Trezor Blockbook, individual addresses use Mempool.space** — Blockbook accepts xpub/ypub/zpub natively and returns the full wallet balance + per-address breakdown in one call. Mempool.space does not support extended public keys. The `User-Agent: GhostStack/1.0` header is required on Blockbook requests — generic UAs are blocked.
 - **Single asyncio event loop** — there are no threads and no multiprocessing. All concurrency is cooperative (`async`/`await`). Keep it that way.
 - **Refresh lock** — `RefreshService` holds an `asyncio.Lock` to prevent concurrent refresh cycles. Do not bypass this.
 - **Specs are the source of truth** — `specs/FUNC_SPEC.md` and `specs/TECH_SPEC.md` define the intended behavior. UI mockups in `specs/mockups/` are the visual reference. Read them before implementing anything non-trivial.

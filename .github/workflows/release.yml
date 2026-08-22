@@ -38,7 +38,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/lukius/cryptodash
+          images: ghcr.io/lukius/ghoststack
           tags: |
             type=semver,pattern={{version}},value=${{ github.event.inputs.version || github.ref_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.inputs.version || github.ref_name }}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CryptoDash — self-hosted crypto portfolio dashboard."""
+"""GhostStack — self-hosted crypto portfolio dashboard."""
 
 import sys
 import os
@@ -10,7 +10,7 @@ def main():
         print("Error: Python 3.11+ is required.", file=sys.stderr)
         sys.exit(1)
 
-    db_path = os.getenv("CRYPTODASH_DB_PATH", "data/cryptodash.db")
+    db_path = os.getenv("GHOSTSTACK_DB_PATH", "data/ghoststack.db")
     parent = os.path.dirname(db_path)
     if parent:
         os.makedirs(parent, exist_ok=True)

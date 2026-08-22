@@ -1,15 +1,15 @@
 services:
-  cryptodash:
-    image: ghcr.io/lukius/cryptodash:latest
-    container_name: cryptodash
+  ghoststack:
+    image: ghcr.io/lukius/ghoststack:latest
+    container_name: ghoststack
     restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      - cryptodash-data:/app/data
+      - ghoststack-data:/app/data
     # Optional: override defaults
     # environment:
-    #   CRYPTODASH_LOG_LEVEL: info
+    #   GHOSTSTACK_LOG_LEVEL: info
 
 volumes:
-  cryptodash-data:
+  ghoststack-data:

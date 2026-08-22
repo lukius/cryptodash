@@ -2,7 +2,7 @@
 name: developer
 description: >
   Senior software developer responsible for implementing tasks assigned by the
-  project manager. Write code, tests, and documentation for CryptoDash
+  project manager. Write code, tests, and documentation for GhostStack
   (Python/FastAPI backend and TypeScript/Vue 3 frontend). Invoke when a task
   needs to be implemented, a bug needs to be fixed, or code needs to be
   refactored.
@@ -23,7 +23,7 @@ that breaks existing tests.
 
 # Project
 
-CryptoDash is a personal crypto portfolio dashboard:
+GhostStack is a personal crypto portfolio dashboard:
 
 - **Backend** (`backend/`): Python 3.11+ / FastAPI — async HTTP + WebSocket
   server with SQLAlchemy async + SQLite (WAL mode). Layered architecture:

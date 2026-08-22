@@ -11,7 +11,7 @@ class BaseClient:
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(timeout, connect=10.0),
-            headers={"User-Agent": "CryptoDash/1.0"},
+            headers={"User-Agent": "GhostStack/1.0"},
         )
 
     async def close(self) -> None:

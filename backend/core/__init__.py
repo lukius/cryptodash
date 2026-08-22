@@ -7,7 +7,7 @@ from backend.core.dependencies import (
 from backend.core.exceptions import (
     AccountExistsError,
     AddressValidationError,
-    CryptoDashError,
+    GhostStackError,
     DuplicateWalletError,
     ExternalAPIError,
     InvalidCredentialsError,
@@ -28,7 +28,7 @@ __all__ = [
     "get_db",
     "AccountExistsError",
     "AddressValidationError",
-    "CryptoDashError",
+    "GhostStackError",
     "DuplicateWalletError",
     "ExternalAPIError",
     "InvalidCredentialsError",
