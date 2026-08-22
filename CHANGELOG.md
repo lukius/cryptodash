@@ -11,6 +11,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [2.0.0] — 2026-08-21
+
+### Changed
+
+- **Renamed the project from CryptoDash to GhostStack.** *Ghost* is a nod to Kaspa's GHOSTDAG consensus, *Stack* to Bitcoin's sats — and to the portfolio the app tracks. The wordmark and icon now colour the Kaspa half teal (`#49eacb`) and the Bitcoin half orange (`#f7931a`), in that reading order.
+
+### Breaking
+
+Nothing is migrated automatically. See [Upgrading from CryptoDash](README.md#upgrading-from-cryptodash) for the steps.
+
+- Container image moved from `ghcr.io/lukius/cryptodash` to `ghcr.io/lukius/ghoststack`. Tags published under the old path stay there and will not be updated.
+- Docker volume renamed `cryptodash-data` → `ghoststack-data`. A renamed volume is a new, empty volume: upgrading without copying the old one across starts the app with no wallets and no history.
+- Default database file renamed `cryptodash.db` → `ghoststack.db`.
+- Environment-variable prefix renamed `CRYPTODASH_*` → `GHOSTSTACK_*`. The old names are not accepted as a fallback; an unmigrated variable is ignored rather than reported.
+- The `CryptoDashError` base exception is now `GhostStackError`.
+- Outbound requests identify as `GhostStack/1.0` instead of `CryptoDash/1.0`.
+
+---
+
 ## [1.0.1] — 2026-07-18
 
 ### Fixed
@@ -25,7 +44,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [1.0.0] — 2026-04-27
 
-Initial release of CryptoDash.
+Initial release, under the project's original name, CryptoDash.
 
 ### Added
 
@@ -71,6 +90,7 @@ Initial release of CryptoDash.
 - Backend: 20 pytest test modules covering auth, wallets, dashboard, settings, refresh, history, scheduler, security, repositories, models, database, exception handlers, and all three external API clients
 - Frontend: Vitest component and store tests (WalletTable, AddWalletDialog, TimeRangeSelector, auth store, wallets store)
 
-[Unreleased]: https://github.com/lukius/cryptodash/compare/v1.0.1...HEAD
-[1.0.1]: https://github.com/lukius/cryptodash/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/lukius/cryptodash/releases/tag/v1.0.0
+[Unreleased]: https://github.com/lukius/ghoststack/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/lukius/ghoststack/compare/v1.0.1...v2.0.0
+[1.0.1]: https://github.com/lukius/ghoststack/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/lukius/ghoststack/releases/tag/v1.0.0

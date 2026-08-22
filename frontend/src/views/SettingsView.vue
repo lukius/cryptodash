@@ -112,7 +112,7 @@ async function save() {
           <div class="field-group">
             <label class="field-label">Auto-refresh interval</label>
             <p class="field-hint">
-              How often CryptoDash automatically fetches updated balances and
+              How often GhostStack automatically fetches updated balances and
               prices.
             </p>
             <div class="radio-group">
@@ -139,7 +139,7 @@ async function save() {
               >Preferred timezone</label
             >
             <p class="field-hint">
-              Timestamps throughout CryptoDash will be displayed in this
+              Timestamps throughout GhostStack will be displayed in this
               timezone.
             </p>
             <select id="tz-select" v-model="selectedTimezone" class="tz-select">

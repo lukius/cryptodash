@@ -91,7 +91,7 @@ def test_app_creates_without_error():
 
 def test_app_has_title():
     app = create_app()
-    assert app.title == "CryptoDash"
+    assert app.title == "GhostStack"
 
 
 def test_app_has_routes():

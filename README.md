@@ -1,10 +1,12 @@
 <p align="center">
-  <img src="frontend/public/favicon.svg" width="80" alt="CryptoDash">
+  <img src="frontend/public/favicon.svg" width="80" alt="GhostStack">
 </p>
 
-# CryptoDash
+# GhostStack
 
 A self-hosted personal cryptocurrency portfolio dashboard. Track wallet balances and portfolio value across Bitcoin and Kaspa — no account registration, no private keys, no third-party cloud required.
+
+*Formerly CryptoDash. If you are upgrading from v1.0.x, see [Upgrading from CryptoDash](#upgrading-from-cryptodash) — the rename is a breaking change.*
 
 ## Features
 
@@ -31,24 +33,24 @@ External data sources: [Mempool.space](https://mempool.space) (Bitcoin individua
 
 ## Quick Start (Docker)
 
-The fastest way to run CryptoDash. Requires Docker.
+The fastest way to run GhostStack. Requires Docker.
 
 ```bash
 docker run -d \
-  --name cryptodash \
+  --name ghoststack \
   -p 8000:8000 \
-  -v cryptodash-data:/app/data \
-  ghcr.io/lukius/cryptodash:latest
+  -v ghoststack-data:/app/data \
+  ghcr.io/lukius/ghoststack:latest
 ```
 
 Or with Docker Compose:
 
 ```bash
-curl -O https://raw.githubusercontent.com/lukius/cryptodash/master/docker-compose.yml
+curl -O https://raw.githubusercontent.com/lukius/ghoststack/master/docker-compose.yml
 docker compose up -d
 ```
 
-Open [http://localhost:8000](http://localhost:8000) in your browser. On first run you will be prompted to create a username and password. Your data lives in the `cryptodash-data` named volume — your wallet list and history persist across container restarts and image upgrades.
+Open [http://localhost:8000](http://localhost:8000) in your browser. On first run you will be prompted to create a username and password. Your data lives in the `ghoststack-data` named volume — your wallet list and history persist across container restarts and image upgrades.
 
 Images are published for `linux/amd64` and `linux/arm64` (e.g. Raspberry Pi 4/5).
 
@@ -58,8 +60,8 @@ Images are published for `linux/amd64` and `linux/arm64` (e.g. Raspberry Pi 4/5)
 
 ```bash
 # 1. Clone
-git clone https://github.com/lukius/cryptodash.git
-cd cryptodash
+git clone https://github.com/lukius/ghoststack.git
+cd ghoststack
 
 # 2. Backend — create and activate a virtualenv, then install deps
 python -m venv .venv
@@ -100,14 +102,14 @@ All settings are optional environment variables with sensible defaults:
 
 | Variable | Default | Description |
 |---|---|---|
-| `CRYPTODASH_DB_PATH` | `data/cryptodash.db` | Path to the SQLite database file |
-| `CRYPTODASH_HOST` | `0.0.0.0` | Bind address |
-| `CRYPTODASH_PORT` | `8000` | HTTP port |
-| `CRYPTODASH_LOG_LEVEL` | `info` | Uvicorn log level (`debug`, `info`, `warning`, `error`) |
+| `GHOSTSTACK_DB_PATH` | `data/ghoststack.db` | Path to the SQLite database file |
+| `GHOSTSTACK_HOST` | `0.0.0.0` | Bind address |
+| `GHOSTSTACK_PORT` | `8000` | HTTP port |
+| `GHOSTSTACK_LOG_LEVEL` | `info` | Uvicorn log level (`debug`, `info`, `warning`, `error`) |
 
 The refresh interval is configured inside the app via the Settings page and persisted in the database.
 
-When running under Docker, pass these via `-e VAR=value` (or in the `environment:` block of `docker-compose.yml`). The default `CRYPTODASH_DB_PATH` inside the container is `/app/data/cryptodash.db` so the database lives in the mounted volume.
+When running under Docker, pass these via `-e VAR=value` (or in the `environment:` block of `docker-compose.yml`). The default `GHOSTSTACK_DB_PATH` inside the container is `/app/data/ghoststack.db` so the database lives in the mounted volume.
 
 ### Reset password
 
@@ -120,13 +122,39 @@ python run.py reset-password
 In Docker:
 
 ```bash
-docker exec -it cryptodash python run.py reset-password
+docker exec -it ghoststack python run.py reset-password
 ```
+
+## Upgrading from CryptoDash
+
+This project was called **CryptoDash** through v1.0.1. The rename changed the image path, the volume name, the database filename, and the environment-variable prefix. Nothing is migrated automatically — a plain `docker compose pull` will start against an empty database.
+
+**Docker (named volume).** Copy the old volume across before bringing the new stack up:
+
+```bash
+docker compose down
+docker volume create ghoststack-data
+docker run --rm -v cryptodash-data:/from -v ghoststack-data:/to alpine \
+  sh -c 'cp -a /from/. /to/ && cd /to && for f in cryptodash.db*; do mv "$f" "ghoststack.db${f#cryptodash.db}"; done'
+docker compose up -d
+```
+
+The loop renames the `-wal` and `-shm` sidecar files alongside the database. Leaving them behind can lose writes that had not yet been checkpointed.
+
+**From source.** Rename the database file (and its sidecars, if present):
+
+```bash
+for f in data/cryptodash.db*; do mv "$f" "data/ghoststack.db${f#data/cryptodash.db}"; done
+```
+
+**Environment variables.** The `CRYPTODASH_*` prefix is gone — use `GHOSTSTACK_*` (see [Configuration](#configuration)). The old names are not read as a fallback, so an unmigrated `CRYPTODASH_DB_PATH` is silently ignored and the default path is used instead.
+
+**Old images.** Tags published before the rename remain at `ghcr.io/lukius/cryptodash` and will not receive further updates.
 
 ## Project Structure
 
 ```
-cryptodash/
+ghoststack/
 ├── backend/
 │   ├── app.py              # FastAPI app factory + lifespan
 │   ├── config.py           # Environment-variable configuration
@@ -194,7 +222,7 @@ cd frontend && npm run lint
 
 ## AI-Assisted Development
 
-CryptoDash is primarily developed with [Claude Code](https://claude.ai/code), though `CLAUDE.md` and the specs in `specs/` make the project approachable by any AI assistant.
+GhostStack is primarily developed with [Claude Code](https://claude.ai/code), though `CLAUDE.md` and the specs in `specs/` make the project approachable by any AI assistant.
 
 - **`CLAUDE.md`** — project context file: build commands, key design decisions, known gotchas. Any AI assistant can read this to get up to speed quickly.
 - **`.claude/agents/`** — a Claude Code agent team (project manager, developer, tech lead, QA analyst) for coordinated multi-step work

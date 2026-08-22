@@ -26,7 +26,7 @@ finalizing any task plan.
 
 # Project
 
-CryptoDash — a personal crypto portfolio dashboard.
+GhostStack — a personal crypto portfolio dashboard.
 
 - **Backend** (`backend/`): Python 3.11+ / FastAPI / SQLAlchemy async / SQLite
 - **Frontend** (`frontend/`): TypeScript / Vue 3 / Vite / Tailwind CSS / Chart.js

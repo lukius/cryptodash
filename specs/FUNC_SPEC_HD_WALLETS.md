@@ -1,4 +1,4 @@
-# CryptoDash — Functional Specification Addendum: HD Wallet Support
+# GhostStack — Functional Specification Addendum: HD Wallet Support
 
 **Version:** 1.0
 **Date:** 2026-04-13
@@ -15,7 +15,7 @@
 
 ### Description
 
-This addendum extends CryptoDash to support Bitcoin HD (Hierarchical Deterministic) wallets in addition to individual address tracking. Instead of entering a single Bitcoin address, the user can enter an extended public key (xpub, ypub, or zpub) exported from a hardware or software wallet (e.g., Trezor, Ledger, Electrum). CryptoDash then tracks the aggregate balance and transaction history across all addresses derived from that key, surfacing a single consolidated view to the user.
+This addendum extends GhostStack to support Bitcoin HD (Hierarchical Deterministic) wallets in addition to individual address tracking. Instead of entering a single Bitcoin address, the user can enter an extended public key (xpub, ypub, or zpub) exported from a hardware or software wallet (e.g., Trezor, Ledger, Electrum). GhostStack then tracks the aggregate balance and transaction history across all addresses derived from that key, surfacing a single consolidated view to the user.
 
 ### Key Value Proposition
 
@@ -34,7 +34,7 @@ HD wallets generate a new address for each transaction by design — tracking th
 
 **Out of scope:**
 
-- Address derivation performed locally by CryptoDash (derivation is delegated to the external API)
+- Address derivation performed locally by GhostStack (derivation is delegated to the external API)
 - Per-derived-address charts or historical data
 - Kaspa HD wallet support
 - Automatic detection of overlap between an individual tracked address and a derived address from a tracked xpub
@@ -308,7 +308,7 @@ Balance snapshots for HD wallets use the existing snapshot entity, with `wallet_
 ### 7.1 xpub-Capable Bitcoin API
 
 - **Purpose:** Retrieve aggregate balance and transaction history for a Bitcoin HD wallet given its extended public key.
-- **Direction:** Inbound (data flows into CryptoDash). Read-only.
+- **Direction:** Inbound (data flows into GhostStack). Read-only.
 - **Protocol:** REST over HTTPS (expected, based on existing Bitcoin API integration pattern).
 - **Data exchanged (logical):**
   - Input: xpub, ypub, or zpub key string.
@@ -352,7 +352,7 @@ Balance snapshots for HD wallets use the existing snapshot entity, with `wallet_
 
 ## 10. Release and Phasing
 
-This feature is delivered as a single increment on top of the base CryptoDash release (FUNC_SPEC.md v1.0). There are no sub-phases.
+This feature is delivered as a single increment on top of the base GhostStack release (FUNC_SPEC.md v1.0). There are no sub-phases.
 
 **Dependencies:**
 

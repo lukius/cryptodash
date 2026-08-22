@@ -1,6 +1,6 @@
 # Security Policy
 
-CryptoDash is a self-hosted application — there is no central service to attack — but vulnerabilities that affect users running their own instance are still serious. Please report them privately.
+GhostStack is a self-hosted application — there is no central service to attack — but vulnerabilities that affect users running their own instance are still serious. Please report them privately.
 
 ## Supported Versions
 
@@ -30,13 +30,13 @@ Acknowledgement target: within 7 days. Fix target for reproducible issues: withi
 
 In scope:
 
-- The CryptoDash backend (`backend/`) and frontend (`frontend/`).
+- The GhostStack backend (`backend/`) and frontend (`frontend/`).
 - Default configuration and the shipped Alembic migrations.
 
 Out of scope:
 
 - Vulnerabilities in third-party services (Mempool.space, Trezor Blockbook, api.kaspa.org, CoinGecko) — please report those upstream.
-- Issues that require physical access to the machine running CryptoDash.
+- Issues that require physical access to the machine running GhostStack.
 - Self-inflicted misconfigurations: exposing the SQLite database file, running the dev server on the public internet without TLS in front of it, sharing your account password, etc.
 
 ## Disclosure

@@ -1,4 +1,4 @@
-# CryptoDash — Technical Specification
+# GhostStack — Technical Specification
 
 **Version:** 1.0
 **Date:** 2026-04-12
@@ -184,7 +184,7 @@ The entire backend runs on a **single asyncio event loop** managed by `uvicorn`.
 ## 3. Project Structure
 
 ```
-cryptodash/
+ghoststack/
 ├── run.py                          # Standalone entry point (shebang: #!/usr/bin/env python3)
 ├── requirements.txt                # Production Python dependencies
 ├── requirements-dev.txt            # Test + lint Python dependencies
@@ -827,7 +827,7 @@ class BaseClient:
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(timeout, connect=10.0),
-            headers={"User-Agent": "CryptoDash/1.0"},
+            headers={"User-Agent": "GhostStack/1.0"},
         )
 
     async def close(self) -> None:
@@ -1473,7 +1473,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 class Base(DeclarativeBase):
     pass
 
-engine = create_async_engine("sqlite+aiosqlite:///data/cryptodash.db", echo=False)
+engine = create_async_engine("sqlite+aiosqlite:///data/ghoststack.db", echo=False)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 ```
 
@@ -1769,10 +1769,10 @@ Configuration is loaded at startup from environment variables with sensible defa
 
 | Env Variable | Type | Default | Description |
 |-------------|------|---------|-------------|
-| `CRYPTODASH_DB_PATH` | string | `data/cryptodash.db` | Path to the SQLite database file. |
-| `CRYPTODASH_HOST` | string | `0.0.0.0` | Bind address for uvicorn. |
-| `CRYPTODASH_PORT` | int | `8000` | Bind port. |
-| `CRYPTODASH_LOG_LEVEL` | string | `info` | Logging level: debug, info, warning, error. |
+| `GHOSTSTACK_DB_PATH` | string | `data/ghoststack.db` | Path to the SQLite database file. |
+| `GHOSTSTACK_HOST` | string | `0.0.0.0` | Bind address for uvicorn. |
+| `GHOSTSTACK_PORT` | int | `8000` | Bind port. |
+| `GHOSTSTACK_LOG_LEVEL` | string | `info` | Logging level: debug, info, warning, error. |
 
 ```python
 # backend/config.py
@@ -1781,10 +1781,10 @@ import os
 
 @dataclass
 class AppConfig:
-    db_path: str = os.getenv("CRYPTODASH_DB_PATH", "data/cryptodash.db")
-    host: str = os.getenv("CRYPTODASH_HOST", "0.0.0.0")
-    port: int = int(os.getenv("CRYPTODASH_PORT", "8000"))
-    log_level: str = os.getenv("CRYPTODASH_LOG_LEVEL", "info")
+    db_path: str = os.getenv("GHOSTSTACK_DB_PATH", "data/ghoststack.db")
+    host: str = os.getenv("GHOSTSTACK_HOST", "0.0.0.0")
+    port: int = int(os.getenv("GHOSTSTACK_PORT", "8000"))
+    log_level: str = os.getenv("GHOSTSTACK_LOG_LEVEL", "info")
 
 config = AppConfig()
 ```
@@ -1795,7 +1795,7 @@ config = AppConfig()
 
 ```python
 #!/usr/bin/env python3
-"""CryptoDash — self-hosted crypto portfolio dashboard."""
+"""GhostStack — self-hosted crypto portfolio dashboard."""
 import sys
 import os
 
@@ -1806,7 +1806,7 @@ def main():
         sys.exit(1)
 
     # Ensure data directory exists
-    db_path = os.getenv("CRYPTODASH_DB_PATH", "data/cryptodash.db")
+    db_path = os.getenv("GHOSTSTACK_DB_PATH", "data/ghoststack.db")
     os.makedirs(os.path.dirname(db_path) or "data", exist_ok=True)
 
     import uvicorn
@@ -1879,7 +1879,7 @@ Ordered list from invocation to "ready to serve":
 6. **Mount routers:** auth, wallets, dashboard, settings, websocket.
 7. **Mount static files:** `frontend/dist/` at `/` with SPA fallback (serve `index.html` for unmatched routes).
 8. **uvicorn** binds to `host:port` and begins accepting connections.
-9. Log: `CryptoDash running at http://{host}:{port}`.
+9. Log: `GhostStack running at http://{host}:{port}`.
 
 **Lifespan context manager:**
 
@@ -1898,7 +1898,7 @@ async def lifespan(app: FastAPI):
     app.state.refresh_service = RefreshService(...)
     app.state.scheduler = Scheduler(app.state.refresh_service, ...)
     await app.state.scheduler.start()
-    logger.info("CryptoDash started")
+    logger.info("GhostStack started")
 
     yield
 
@@ -1907,7 +1907,7 @@ async def lifespan(app: FastAPI):
     await app.state.btc_client.close()
     await app.state.kas_client.close()
     await app.state.coingecko_client.close()
-    logger.info("CryptoDash stopped")
+    logger.info("GhostStack stopped")
 ```
 
 ---
@@ -1938,24 +1938,24 @@ async def lifespan(app: FastAPI):
 
 ```python
 # backend/core/exceptions.py
-class CryptoDashError(Exception):
+class GhostStackError(Exception):
     """Base exception for all application errors."""
     pass
 
-class AccountExistsError(CryptoDashError): ...
-class InvalidCredentialsError(CryptoDashError): ...
-class RateLimitedError(CryptoDashError):
+class AccountExistsError(GhostStackError): ...
+class InvalidCredentialsError(GhostStackError): ...
+class RateLimitedError(GhostStackError):
     def __init__(self, retry_after: int):
         self.retry_after = retry_after
         super().__init__(f"Too many failed attempts. Please wait {retry_after} seconds.")
 
-class InvalidSessionError(CryptoDashError): ...
-class AddressValidationError(CryptoDashError): ...
-class DuplicateWalletError(CryptoDashError): ...
-class WalletLimitReachedError(CryptoDashError): ...
-class TagValidationError(CryptoDashError): ...
-class WalletNotFoundError(CryptoDashError): ...
-class ExternalAPIError(CryptoDashError): ...
+class InvalidSessionError(GhostStackError): ...
+class AddressValidationError(GhostStackError): ...
+class DuplicateWalletError(GhostStackError): ...
+class WalletLimitReachedError(GhostStackError): ...
+class TagValidationError(GhostStackError): ...
+class WalletNotFoundError(GhostStackError): ...
+class ExternalAPIError(GhostStackError): ...
 ```
 
 **Exception handler registration:**

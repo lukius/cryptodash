@@ -16,9 +16,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    CRYPTODASH_DB_PATH=/app/data/cryptodash.db \
-    CRYPTODASH_HOST=0.0.0.0 \
-    CRYPTODASH_PORT=8000
+    GHOSTSTACK_DB_PATH=/app/data/ghoststack.db \
+    GHOSTSTACK_HOST=0.0.0.0 \
+    GHOSTSTACK_PORT=8000
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
@@ -27,11 +27,11 @@ COPY backend/ ./backend/
 COPY run.py alembic.ini ./
 COPY --from=frontend /build/dist ./frontend/dist
 
-RUN useradd -u 1000 -m -s /usr/sbin/nologin cryptodash \
+RUN useradd -u 1000 -m -s /usr/sbin/nologin ghoststack \
     && mkdir -p /app/data \
-    && chown -R cryptodash:cryptodash /app
+    && chown -R ghoststack:ghoststack /app
 
-USER cryptodash
+USER ghoststack
 
 VOLUME ["/app/data"]
 EXPOSE 8000

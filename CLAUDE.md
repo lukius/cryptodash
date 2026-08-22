@@ -1,9 +1,9 @@
-# CryptoDash
+# GhostStack
 
 ## Project Structure
 
 ```
-cryptodash/
+ghoststack/
 ├── .claude/
 │   ├── agents/            # Agent team definitions (PM, developer, tech lead, QA)
 │   └── skills/            # Claude Code skills (invoke with /skill-name)
@@ -48,7 +48,7 @@ Read `specs/` for detailed functional and technical specs before implementing fe
 
 ## Git & Remote
 
-- **Hosted on GitHub**: `github.com:lukius/cryptodash`
+- **Hosted on GitHub**: `github.com:lukius/ghoststack`
 - Use `gh` for all remote operations: PRs, issues, CI, etc.
 - Example: `gh pr create`, `gh issue list`, `gh run list`
 
@@ -73,5 +73,5 @@ Read `specs/` for detailed functional and technical specs before implementing fe
 ## Key Design Decisions
 
 - **bcrypt directly, not via passlib** — `passlib==1.7.4` is incompatible with `bcrypt>=4.x`: passlib's internal wrap-bug detection hashes a 200-byte string, but newer bcrypt rejects passwords over 72 bytes. `requirements.txt` uses `bcrypt==5.0.0` directly. The spec's "bcrypt via passlib" recommendation cannot be followed; the `bcrypt` library directly produces equivalent `$2b$12$...` hashes.
-- **HD wallets use Trezor Blockbook (`btc2.trezor.io`), individual BTC wallets use mempool.space** — Blockbook accepts xpub/ypub/zpub natively and returns balance + per-address breakdown + tx history for the entire wallet in one call, eliminating the rate-limit pressure that broke the per-address mempool.space approach. The spec's original blockchain.info choice does not work for BIP84 zpubs (it derives only legacy P2PKH addresses from an xpub). The User-Agent `CryptoDash/1.0` (set in `BaseClient`) is required — generic UAs like `Mozilla/5.0` are blocked by Cloudflare on Blockbook xpub paths.
+- **HD wallets use Trezor Blockbook (`btc2.trezor.io`), individual BTC wallets use mempool.space** — Blockbook accepts xpub/ypub/zpub natively and returns balance + per-address breakdown + tx history for the entire wallet in one call, eliminating the rate-limit pressure that broke the per-address mempool.space approach. The spec's original blockchain.info choice does not work for BIP84 zpubs (it derives only legacy P2PKH addresses from an xpub). The User-Agent `GhostStack/1.0` (set in `BaseClient`) is required — generic UAs like `Mozilla/5.0` are blocked by Cloudflare on Blockbook xpub paths.
 

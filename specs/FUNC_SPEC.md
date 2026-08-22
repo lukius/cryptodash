@@ -1,4 +1,4 @@
-# CryptoDash — Functional Specification
+# GhostStack — Functional Specification
 
 **Version:** 1.0
 **Date:** 2026-04-12
@@ -10,11 +10,11 @@
 
 ### Product Name
 
-**CryptoDash**
+**GhostStack**
 
 ### Description
 
-CryptoDash is a personal web application that allows a single user to monitor the balances of multiple cryptocurrency wallets across the Bitcoin and Kaspa networks. The user adds wallet addresses, assigns custom names/tags to them, and views a dashboard of charts and widgets showing current balances, portfolio composition, and balance history over time. The application periodically fetches balance data from public blockchain APIs and price data from CoinGecko, storing snapshots locally for historical tracking.
+GhostStack is a personal web application that allows a single user to monitor the balances of multiple cryptocurrency wallets across the Bitcoin and Kaspa networks. The user adds wallet addresses, assigns custom names/tags to them, and views a dashboard of charts and widgets showing current balances, portfolio composition, and balance history over time. The application periodically fetches balance data from public blockchain APIs and price data from CoinGecko, storing snapshots locally for historical tracking.
 
 ### Key Value Proposition
 
@@ -54,13 +54,13 @@ A self-hosted, unified view of crypto holdings across Bitcoin and Kaspa — no p
 
 | Term | Definition |
 |---|---|
-| **Wallet** | A blockchain address that the user registers in CryptoDash for balance tracking. Does not imply private key access. |
+| **Wallet** | A blockchain address that the user registers in GhostStack for balance tracking. Does not imply private key access. |
 | **Network** | The blockchain network a wallet belongs to. In this version: Bitcoin (BTC) or Kaspa (KAS). |
 | **Tag** | A user-assigned display name for a wallet (e.g., "Cold Storage", "Trading Fund"). |
 | **Balance** | The amount of native cryptocurrency held at a wallet address at a given point in time. |
 | **Snapshot** | A timestamped record of a wallet's balance and the corresponding USD price, stored for historical charting. |
 | **Refresh** | The act of querying external APIs to update wallet balances and crypto prices. Can be manual or automatic. |
-| **Portfolio** | The aggregate of all wallets the user has registered in CryptoDash. |
+| **Portfolio** | The aggregate of all wallets the user has registered in GhostStack. |
 | **Native coin** | The cryptocurrency native to a network: BTC for Bitcoin, KAS for Kaspa. |
 | **BTC** | Bitcoin, the native currency of the Bitcoin network. |
 | **KAS** | Kaspa, the native currency of the Kaspa network. |
@@ -101,7 +101,7 @@ The application requires login. A single user account is created during the firs
 
 ```
                           +------------------+
-                          |    CryptoDash    |
+                          |    GhostStack    |
                           |   (Web App)      |
                           +--------+---------+
                                    |
@@ -123,8 +123,8 @@ The application requires login. A single user account is created during the firs
 
 **Actors:**
 
-- **Owner** — interacts with CryptoDash via a web browser.
-- **Bitcoin public API** — provides BTC wallet balance and transaction history. Data flows in (to CryptoDash). Read-only.
+- **Owner** — interacts with GhostStack via a web browser.
+- **Bitcoin public API** — provides BTC wallet balance and transaction history. Data flows in (to GhostStack). Read-only.
 - **Kaspa public API** — provides KAS wallet balance and transaction history. Data flows in. Read-only.
 - **CoinGecko API** — provides BTC/USD and KAS/USD spot prices. Data flows in. Read-only.
 
@@ -743,7 +743,7 @@ Provides single-user authentication: a one-time account setup on first launch, l
 | balance_after | Decimal | No | Running balance after this transaction, if computable. |
 | block_height | Integer | No | Block number, used for ordering and incremental sync cursor. |
 | timestamp | Datetime | Yes | When the transaction was confirmed on-chain. |
-| created_at | Datetime | Yes | When this record was stored in CryptoDash. |
+| created_at | Datetime | Yes | When this record was stored in GhostStack. |
 
 **Balance Snapshot**
 
@@ -816,13 +816,13 @@ Provides single-user authentication: a one-time account setup on first launch, l
 
 - **System:** Public Bitcoin blockchain API (primary candidate: Mempool.space; fallback: Blockchair).
 - **Purpose:** Retrieve wallet balances and transaction history for BTC addresses.
-- **Direction:** Inbound (CryptoDash reads from API).
+- **Direction:** Inbound (GhostStack reads from API).
 - **Protocol:** REST API over HTTPS.
 - **Data exchanged:**
   - Request: wallet address.
   - Response: current confirmed balance (in satoshis); list of transactions with amounts and timestamps.
 - **Failure handling:** Retry once after 10 seconds. On second failure, use cached data and mark wallet with a warning.
-- **Dependency criticality:** Soft dependency. CryptoDash functions in degraded mode (stale data) without it.
+- **Dependency criticality:** Soft dependency. GhostStack functions in degraded mode (stale data) without it.
 
 ### 7.2 Kaspa Blockchain API
 
